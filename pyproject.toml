@@ -58,7 +58,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://litesoc.io"
+Homepage = "https://www.litesoc.io"
 Documentation = "https://www.litesoc.io/docs/api"
 Repository = "https://github.com/LiteSOC/litesoc-python"
 Issues = "https://github.com/LiteSOC/litesoc-python/issues"

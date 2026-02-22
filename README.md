@@ -343,4 +343,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 - [LiteSOC Website](https://www.litesoc.io)
 - [Documentation](https://www.litesoc.io/docs)
 - [API Reference](https://www.litesoc.io/docs/api)
-- [GitHub Repository](https://github.com/litesoc/litesoc-python)
+- [GitHub Repository](https://github.com/LiteSOC/litesoc-python)
