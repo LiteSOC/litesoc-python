@@ -20,11 +20,11 @@ from litesoc import LiteSOC
 # Initialize the SDK
 litesoc = LiteSOC(api_key="your-api-key")
 
-# Track a login failure
+# Track a login failure - LiteSOC auto-enriches with GeoIP & Network Intelligence
 litesoc.track("auth.login_failed",
     actor_id="user_123",
     actor_email="user@example.com",
-    user_ip="192.168.1.1",
+    user_ip="192.168.1.1",  # Required for Security Intelligence
     metadata={"reason": "invalid_password"}
 )
 
@@ -34,12 +34,39 @@ litesoc.flush()
 
 ## Features
 
-- ✅ **50+ pre-defined security event types** - Authentication, authorization, data access, and more
+- ✅ **26 standard security event types** - Authentication, authorization, admin, data, and security events
 - ✅ **Automatic batching** - Events are batched for efficient delivery
 - ✅ **Retry logic** - Failed events are automatically retried
 - ✅ **Type hints** - Full type annotations for IDE support
 - ✅ **Thread-safe** - Safe to use across multiple threads
 - ✅ **Context manager support** - Use with `with` statement for automatic cleanup
+- 🗺️ **GeoIP Enrichment** - Automatic location data from IP addresses
+- 🛡️ **Network Intelligence** - VPN, Tor, Proxy & Datacenter detection
+- 📊 **Threat Scoring** - Auto-assigned severity (Low → Critical)
+
+## Security Intelligence (Automatic Enrichment)
+
+When you provide `user_ip`, LiteSOC automatically enriches your events with:
+
+### 🗺️ Geolocation
+- Country & City resolution
+- Latitude/Longitude coordinates
+- Interactive map visualization in dashboard
+
+### 🛡️ Network Intelligence
+- **VPN Detection** - NordVPN, ExpressVPN, Surfshark, etc.
+- **Tor Exit Nodes** - Anonymizing network detection
+- **Proxy Detection** - HTTP/SOCKS proxy identification
+- **Datacenter IPs** - AWS, GCP, Azure, DigitalOcean, etc.
+
+### 📊 Threat Scoring
+Events are auto-classified by severity:
+- **Low** - Normal activity
+- **Medium** - Unusual patterns
+- **High** - Suspicious behavior
+- **Critical** - Active threats (triggers instant alerts)
+
+> **Important**: Always include `user_ip` for full Security Intelligence features.
 
 ## Configuration Options
 
@@ -138,83 +165,51 @@ litesoc.track_access_denied("user_123", resource="/admin/settings", user_ip="192
 
 ## Event Types
 
-### Authentication Events
-- `auth.login_success`
-- `auth.login_failed`
-- `auth.logout`
-- `auth.password_changed`
-- `auth.password_reset_requested`
-- `auth.password_reset_completed`
-- `auth.mfa_enabled`
-- `auth.mfa_disabled`
-- `auth.mfa_challenge_success`
-- `auth.mfa_challenge_failed`
-- `auth.session_created`
-- `auth.session_revoked`
-- `auth.token_refreshed`
+### 26 Standard Events (Primary)
 
-### User Events
-- `user.created`
-- `user.updated`
-- `user.deleted`
-- `user.email_changed`
-- `user.email_verified`
-- `user.profile_updated`
+These are the primary events for comprehensive security coverage:
 
-### Authorization Events
-- `authz.role_assigned`
-- `authz.role_removed`
-- `authz.role_changed`
-- `authz.permission_granted`
-- `authz.permission_revoked`
-- `authz.access_denied`
-- `authz.access_granted`
+| Category | Event Type | Description |
+|----------|------------|-------------|
+| **Auth** | `auth.login_success` | Successful user login |
+| **Auth** | `auth.login_failed` | Failed login attempt |
+| **Auth** | `auth.logout` | User logout |
+| **Auth** | `auth.password_reset` | Password reset completed |
+| **Auth** | `auth.mfa_enabled` | MFA enabled on account |
+| **Auth** | `auth.mfa_disabled` | MFA disabled on account |
+| **Auth** | `auth.session_expired` | Session timeout/expiry |
+| **Auth** | `auth.token_refreshed` | Token refresh |
+| **Authz** | `authz.role_changed` | User role modified |
+| **Authz** | `authz.permission_granted` | Permission assigned |
+| **Authz** | `authz.permission_revoked` | Permission removed |
+| **Authz** | `authz.access_denied` | Access denied event |
+| **Admin** | `admin.privilege_escalation` | Admin privilege escalation |
+| **Admin** | `admin.user_impersonation` | Admin impersonating user |
+| **Admin** | `admin.settings_changed` | System settings modified |
+| **Admin** | `admin.api_key_created` | New API key generated |
+| **Admin** | `admin.api_key_revoked` | API key revoked |
+| **Admin** | `admin.user_suspended` | User account suspended |
+| **Admin** | `admin.user_deleted` | User account deleted |
+| **Data** | `data.bulk_delete` | Bulk data deletion |
+| **Data** | `data.sensitive_access` | PII/sensitive data accessed |
+| **Data** | `data.export` | Data export operation |
+| **Security** | `security.suspicious_activity` | Suspicious behavior detected |
+| **Security** | `security.rate_limit_exceeded` | Rate limit triggered |
+| **Security** | `security.ip_blocked` | IP address blocked |
+| **Security** | `security.brute_force_detected` | Brute force attack detected |
 
-### Admin Events
-- `admin.privilege_escalation`
-- `admin.user_impersonation`
-- `admin.settings_changed`
-- `admin.api_key_created`
-- `admin.api_key_revoked`
-- `admin.invite_sent`
-- `admin.invite_accepted`
-- `admin.member_removed`
+### Extended Events (Backward Compatible)
 
-### Data Events
-- `data.export`
-- `data.import`
-- `data.bulk_delete`
-- `data.bulk_update`
-- `data.sensitive_access`
-- `data.download`
-- `data.upload`
-- `data.shared`
-- `data.unshared`
+Additional events for granular tracking:
 
-### Security Events
-- `security.suspicious_activity`
-- `security.rate_limit_exceeded`
-- `security.ip_blocked`
-- `security.ip_unblocked`
-- `security.account_locked`
-- `security.account_unlocked`
-- `security.brute_force_detected`
-- `security.impossible_travel`
-- `security.geo_anomaly`
-
-### API Events
-- `api.key_used`
-- `api.rate_limited`
-- `api.error`
-- `api.webhook_sent`
-- `api.webhook_failed`
-
-### Billing Events
-- `billing.subscription_created`
-- `billing.subscription_updated`
-- `billing.subscription_cancelled`
-- `billing.payment_succeeded`
-- `billing.payment_failed`
+- `auth.password_changed`, `auth.password_reset_requested`, `auth.mfa_challenge_success`, `auth.mfa_challenge_failed`, `auth.session_created`
+- `user.created`, `user.updated`, `user.deleted`, `user.email_changed`, `user.profile_updated`
+- `authz.role_assigned`, `authz.role_removed`, `authz.access_granted`
+- `admin.invite_sent`, `admin.invite_accepted`, `admin.member_removed`
+- `data.import`, `data.bulk_update`, `data.download`, `data.upload`, `data.shared`
+- `security.ip_unblocked`, `security.account_locked`, `security.impossible_travel`, `security.geo_anomaly`
+- `api.key_used`, `api.rate_limited`, `api.error`, `api.webhook_sent`, `api.webhook_failed`
+- `billing.subscription_created`, `billing.subscription_cancelled`, `billing.payment_succeeded`, `billing.payment_failed`
 
 ## Framework Integration
 

@@ -1,5 +1,9 @@
 """
 Type definitions for LiteSOC SDK
+
+LiteSOC defines 26 standard security events across 5 categories.
+These events are automatically enriched with Security Intelligence
+including GeoIP, VPN/Tor/Proxy detection, and threat scoring.
 """
 
 from dataclasses import dataclass, field
@@ -16,21 +20,70 @@ class EventSeverity(str, Enum):
     CRITICAL = "critical"
 
 
-# Authentication events
+# =============================================================================
+# 26 STANDARD EVENTS (Primary - Security Intelligence optimized)
+# =============================================================================
+
+# Authentication events (8 events)
 AuthEvent = Literal[
     "auth.login_success",
     "auth.login_failed",
     "auth.logout",
+    "auth.password_reset",
+    "auth.mfa_enabled",
+    "auth.mfa_disabled",
+    "auth.session_expired",
+    "auth.token_refreshed",
+]
+
+# Authorization events (4 events)
+AuthzEvent = Literal[
+    "authz.role_changed",
+    "authz.permission_granted",
+    "authz.permission_revoked",
+    "authz.access_denied",
+]
+
+# Admin events (7 events)
+AdminEvent = Literal[
+    "admin.privilege_escalation",
+    "admin.user_impersonation",
+    "admin.settings_changed",
+    "admin.api_key_created",
+    "admin.api_key_revoked",
+    "admin.user_suspended",
+    "admin.user_deleted",
+]
+
+# Data events (3 events)
+DataEvent = Literal[
+    "data.bulk_delete",
+    "data.sensitive_access",
+    "data.export",
+]
+
+# Security events (4 events)
+SecurityEvent = Literal[
+    "security.suspicious_activity",
+    "security.rate_limit_exceeded",
+    "security.ip_blocked",
+    "security.brute_force_detected",
+]
+
+
+# =============================================================================
+# LEGACY/EXTENDED EVENTS (Backward Compatibility)
+# =============================================================================
+
+# Extended authentication events
+LegacyAuthEvent = Literal[
     "auth.password_changed",
     "auth.password_reset_requested",
     "auth.password_reset_completed",
-    "auth.mfa_enabled",
-    "auth.mfa_disabled",
     "auth.mfa_challenge_success",
     "auth.mfa_challenge_failed",
     "auth.session_created",
     "auth.session_revoked",
-    "auth.token_refreshed",
     "auth.failed",
 ]
 
@@ -49,51 +102,35 @@ UserEvent = Literal[
     "user.login.failed",
 ]
 
-# Authorization events
-AuthzEvent = Literal[
+# Extended authorization events
+LegacyAuthzEvent = Literal[
     "authz.role_assigned",
     "authz.role_removed",
-    "authz.role_changed",
-    "authz.permission_granted",
-    "authz.permission_revoked",
-    "authz.access_denied",
     "authz.access_granted",
 ]
 
-# Admin events
-AdminEvent = Literal[
-    "admin.privilege_escalation",
-    "admin.user_impersonation",
-    "admin.settings_changed",
-    "admin.api_key_created",
-    "admin.api_key_revoked",
+# Extended admin events
+LegacyAdminEvent = Literal[
     "admin.invite_sent",
     "admin.invite_accepted",
     "admin.member_removed",
 ]
 
-# Data events
-DataEvent = Literal[
-    "data.export",
+# Extended data events
+LegacyDataEvent = Literal[
     "data.import",
-    "data.bulk_delete",
     "data.bulk_update",
-    "data.sensitive_access",
     "data.download",
     "data.upload",
     "data.shared",
     "data.unshared",
 ]
 
-# Security events
-SecurityEvent = Literal[
-    "security.suspicious_activity",
-    "security.rate_limit_exceeded",
-    "security.ip_blocked",
+# Extended security events
+LegacySecurityEvent = Literal[
     "security.ip_unblocked",
     "security.account_locked",
     "security.account_unlocked",
-    "security.brute_force_detected",
     "security.impossible_travel",
     "security.geo_anomaly",
 ]
@@ -118,14 +155,21 @@ BillingEvent = Literal[
     "billing.invoice_paid",
 ]
 
-# All event types
+# All event types (26 standard + legacy/extended + custom)
 EventType = Union[
+    # Primary 26 standard events
     AuthEvent,
-    UserEvent,
     AuthzEvent,
     AdminEvent,
     DataEvent,
     SecurityEvent,
+    # Extended/Legacy events
+    LegacyAuthEvent,
+    UserEvent,
+    LegacyAuthzEvent,
+    LegacyAdminEvent,
+    LegacyDataEvent,
+    LegacySecurityEvent,
     ApiEvent,
     BillingEvent,
     str,  # Allow custom events
