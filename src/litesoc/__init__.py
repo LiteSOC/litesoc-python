@@ -38,7 +38,7 @@ from litesoc.types import (
 )
 from litesoc.client import LiteSOC
 
-__version__ = "1.0.0"
+__version__ = "1.0.1"
 __all__ = [
     "LiteSOC",
     "Actor",
