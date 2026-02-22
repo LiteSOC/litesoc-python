@@ -20,6 +20,10 @@ __pycache__/
 .coverage
 htmlcov/
 
+# Linting
+.ruff_cache/
+.mypy_cache/
+
 # IDE
 .idea/
 .vscode/

@@ -6,10 +6,10 @@ These events are automatically enriched with Security Intelligence
 including GeoIP, VPN/Tor/Proxy detection, and threat scoring.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Literal, Optional, Union
 
 
 # Event severity levels
@@ -183,7 +183,7 @@ class Actor:
     id: str
     email: Optional[str] = None
     
-    def to_dict(self) -> Dict[str, Optional[str]]:
+    def to_dict(self) -> dict[str, Optional[str]]:
         """Convert to dictionary for API payload"""
         return {"id": self.id, "email": self.email}
 
@@ -196,7 +196,7 @@ class TrackOptions:
     actor_email: Optional[str] = None
     user_ip: Optional[str] = None
     severity: Optional[EventSeverity] = None
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[dict[str, Any]] = None
     timestamp: Optional[Union[datetime, str]] = None
 
 
@@ -205,13 +205,13 @@ class QueuedEvent:
     """Internal event structure for the queue"""
     
     event: str
-    actor: Optional[Dict[str, Optional[str]]]
+    actor: Optional[dict[str, Optional[str]]]
     user_ip: Optional[str]
-    metadata: Dict[str, Any]
+    metadata: dict[str, Any]
     timestamp: str
     retry_count: int = 0
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for API payload"""
         return {
             "event": self.event,

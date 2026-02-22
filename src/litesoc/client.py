@@ -4,9 +4,8 @@ LiteSOC Python SDK Client
 
 import atexit
 import threading
-import time
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 import requests
 
@@ -16,7 +15,6 @@ from litesoc.types import (
     EventType,
     LiteSOCConfig,
     QueuedEvent,
-    TrackOptions,
 )
 
 __version__ = "1.0.1"
@@ -87,7 +85,7 @@ class LiteSOC:
             timeout=timeout,
         )
         
-        self._queue: List[QueuedEvent] = []
+        self._queue: list[QueuedEvent] = []
         self._queue_lock = threading.Lock()
         self._flush_timer: Optional[threading.Timer] = None
         self._is_flushing = False
@@ -111,10 +109,10 @@ class LiteSOC:
         *,
         actor_id: Optional[str] = None,
         actor_email: Optional[str] = None,
-        actor: Optional[Union[Actor, str, Dict[str, str]]] = None,
+        actor: Optional[Union[Actor, str, dict[str, str]]] = None,
         user_ip: Optional[str] = None,
         severity: Optional[Union[EventSeverity, str]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
         timestamp: Optional[Union[datetime, str]] = None,
     ) -> None:
         """
@@ -150,7 +148,7 @@ class LiteSOC:
         """
         try:
             # Normalize actor
-            actor_dict: Optional[Dict[str, Optional[str]]] = None
+            actor_dict: Optional[dict[str, Optional[str]]] = None
             
             if actor is not None:
                 if isinstance(actor, Actor):
@@ -178,10 +176,12 @@ class LiteSOC:
             # Normalize severity
             severity_str: Optional[str] = None
             if severity is not None:
-                severity_str = severity.value if isinstance(severity, EventSeverity) else severity
+                severity_str = (
+                    severity.value if isinstance(severity, EventSeverity) else severity
+                )
             
             # Build metadata
-            event_metadata: Dict[str, Any] = {
+            event_metadata: dict[str, Any] = {
                 **(metadata or {}),
                 "_sdk": "litesoc-python",
                 "_sdk_version": __version__,
@@ -294,7 +294,7 @@ class LiteSOC:
         *,
         actor_email: Optional[str] = None,
         user_ip: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Track a login failure event."""
         self.track(
@@ -311,7 +311,7 @@ class LiteSOC:
         *,
         actor_email: Optional[str] = None,
         user_ip: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Track a login success event."""
         self.track(
@@ -328,7 +328,7 @@ class LiteSOC:
         *,
         actor_email: Optional[str] = None,
         user_ip: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Track a privilege escalation event (critical severity)."""
         self.track(
@@ -347,7 +347,7 @@ class LiteSOC:
         *,
         actor_email: Optional[str] = None,
         user_ip: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Track a sensitive data access event (high severity)."""
         self.track(
@@ -366,7 +366,7 @@ class LiteSOC:
         *,
         actor_email: Optional[str] = None,
         user_ip: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Track a bulk delete event (high severity)."""
         self.track(
@@ -386,7 +386,7 @@ class LiteSOC:
         *,
         actor_email: Optional[str] = None,
         user_ip: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Track a role change event."""
         self.track(
@@ -404,7 +404,7 @@ class LiteSOC:
         *,
         actor_email: Optional[str] = None,
         user_ip: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> None:
         """Track an access denied event."""
         self.track(
@@ -439,7 +439,7 @@ class LiteSOC:
         except Exception as e:
             self._handle_error("scheduled flush", e)
     
-    def _send_events(self, events: List[QueuedEvent]) -> None:
+    def _send_events(self, events: list[QueuedEvent]) -> None:
         """Send events to the LiteSOC API."""
         if not events:
             return
@@ -462,14 +462,14 @@ class LiteSOC:
             result = response.json()
             
             if result.get("success"):
-                self._log(
-                    f"Successfully sent {len(events)} event(s)",
-                    f"(batch, {result.get('events_accepted')} accepted)" if is_batch else ""
-                )
+                batch_info = ""
+                if is_batch:
+                    batch_info = f"(batch, {result.get('events_accepted')} accepted)"
+                self._log(f"Successfully sent {len(events)} event(s)", batch_info)
             else:
                 raise Exception(result.get("error", "Unknown API error"))
         
-        except Exception as e:
+        except Exception:
             # Re-queue events for retry (with limit)
             retryable = [ev for ev in events if ev.retry_count < 3]
             

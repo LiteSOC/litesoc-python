@@ -20,23 +20,23 @@ Example:
     ```
 """
 
+from litesoc.client import LiteSOC
 from litesoc.types import (
     Actor,
-    TrackOptions,
-    EventType,
+    AdminEvent,
+    ApiEvent,
+    AuthEvent,
+    AuthzEvent,
+    BillingEvent,
+    DataEvent,
     EventSeverity,
+    EventType,
     LiteSOCConfig,
     QueuedEvent,
-    AuthEvent,
-    UserEvent,
-    AuthzEvent,
-    AdminEvent,
-    DataEvent,
     SecurityEvent,
-    ApiEvent,
-    BillingEvent,
+    TrackOptions,
+    UserEvent,
 )
-from litesoc.client import LiteSOC
 
 __version__ = "1.0.1"
 __all__ = [

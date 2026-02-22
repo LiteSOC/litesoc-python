@@ -4,6 +4,7 @@ Official Python SDK for [LiteSOC](https://www.litesoc.io) - Security event track
 
 [![PyPI version](https://badge.fury.io/py/litesoc.svg)](https://badge.fury.io/py/litesoc)
 [![Python Version](https://img.shields.io/pypi/pyversions/litesoc.svg)](https://pypi.org/project/litesoc/)
+[![Tests](https://github.com/LiteSOC/litesoc-python/actions/workflows/test.yml/badge.svg)](https://github.com/LiteSOC/litesoc-python/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Installation
