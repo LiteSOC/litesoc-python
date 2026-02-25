@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "litesoc"
-version = "1.1.0"
+version = "1.2.0"
 description = "Official Python SDK for LiteSOC - Security event tracking and threat detection"
 readme = "README.md"
 license = {text = "MIT"}

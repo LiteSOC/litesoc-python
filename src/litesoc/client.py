@@ -47,7 +47,7 @@ class LiteSOC:
         self,
         api_key: str,
         *,
-        endpoint: str = "https://www.litesoc.io/api/v1/collect",
+        endpoint: str = "https://api.litesoc.io/collect",
         batching: bool = True,
         batch_size: int = 10,
         flush_interval: float = 5.0,

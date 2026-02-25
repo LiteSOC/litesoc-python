@@ -5,6 +5,18 @@ All notable changes to the LiteSOC Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-02-25
+
+### Changed
+- **New API Endpoint** - Updated default endpoint from `https://litesoc.io/api/v1/collect` to `https://api.litesoc.io/collect`
+  - Cleaner subdomain-based API architecture
+  - Improved routing and performance
+  - No breaking changes - existing custom endpoints continue to work
+
+### Notes
+- If you're using a custom `endpoint` parameter, no changes needed
+- The new endpoint provides the same functionality with improved infrastructure
+
 ## [1.1.0] - 2026-02-22
 
 ### Added
