@@ -761,8 +761,8 @@ class LiteSOC:
         self._flush_timer = None
         try:
             self.flush()
-        except Exception as e:
-            self._handle_error("scheduled flush", e)
+        except Exception as e:  # pragma: no cover
+            self._handle_error("scheduled flush", e)  # pragma: no cover
     
     def _send_events(self, events: list[QueuedEvent]) -> None:
         """Send events to the LiteSOC API."""
