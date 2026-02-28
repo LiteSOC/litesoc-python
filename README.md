@@ -88,7 +88,7 @@ litesoc = LiteSOC(
     flush_interval=5.0,           # Seconds between auto-flushes (default: 5.0)
     debug=False,                  # Enable debug logging (default: False)
     silent=True,                  # Fail silently on errors (default: True)
-    timeout=30.0,                 # Request timeout in seconds (default: 30.0)
+    timeout=5.0,                  # Request timeout in seconds (default: 5.0)
 )
 ```
 
@@ -450,6 +450,48 @@ Enable debug logging to troubleshoot issues:
 ```python
 litesoc = LiteSOC(api_key="your-api-key", debug=True)
 # Logs will be printed to stdout
+```
+
+## Performance Tips
+
+### Timeout Configuration
+
+The SDK uses a **5-second default timeout** for all API requests. This prevents slow network conditions from blocking your application:
+
+```python
+# Default: 5-second timeout
+litesoc = LiteSOC(api_key="your-api-key")
+
+# Custom timeout for the entire client
+litesoc = LiteSOC(api_key="your-api-key", timeout=10.0)
+
+# Per-request timeout override (takes precedence)
+alerts = litesoc.get_alerts(timeout=2.0)  # 2-second timeout for this call
+events = litesoc.get_events(timeout=3.0)  # 3-second timeout for this call
+```
+
+### Graceful Timeout Handling
+
+The `track()` method handles timeouts gracefully, returning `False` instead of raising an exception:
+
+```python
+# track() returns True on success, False on timeout
+success = litesoc.track("auth.login_success", actor_id="user_123")
+if not success:
+    print("Event tracking timed out, but application continues")
+```
+
+### Batching for High-Throughput
+
+For applications with high event volume, batching reduces network overhead:
+
+```python
+litesoc = LiteSOC(
+    api_key="your-api-key",
+    batching=True,
+    batch_size=50,          # Send after 50 events
+    flush_interval=10.0,    # Or every 10 seconds
+)
 ```
 
 ## Development

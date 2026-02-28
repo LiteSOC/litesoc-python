@@ -5,6 +5,7 @@ Tests for LiteSOC Python SDK
 import unittest
 from unittest.mock import patch
 
+import requests
 import responses
 
 from litesoc import (
@@ -257,7 +258,7 @@ class TestLiteSOCBatching(unittest.TestCase):
 
     @responses.activate
     def test_flush_retries_on_error(self):
-        """Test flush retries events on error"""
+        """Test flush returns False on error and re-queues events"""
         # First call fails
         responses.add(
             responses.POST,
@@ -269,9 +270,9 @@ class TestLiteSOCBatching(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key", batching=True, batch_size=10, silent=True, debug=False)
         sdk.track("auth.login_success", actor_id="user_123")
         
-        # flush() re-raises the exception from _send_events
-        with self.assertRaises(Exception):
-            sdk.flush()
+        # flush() returns False on error (graceful failure)
+        result = sdk.flush()
+        self.assertFalse(result)
         
         # Events should be re-queued for retry (retry_count incremented)
         self.assertGreater(sdk.get_queue_size(), 0)
@@ -379,7 +380,7 @@ class TestLiteSOCSendEvents(unittest.TestCase):
 
     @responses.activate
     def test_send_events_http_error(self):
-        """Test event sending with HTTP error raises"""
+        """Test event sending with HTTP error returns False"""
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
@@ -390,16 +391,16 @@ class TestLiteSOCSendEvents(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key", batching=True)
         sdk.track("auth.login_success", actor_id="user_123")
         
-        # flush() re-raises HTTP errors
-        with self.assertRaises(Exception):
-            sdk.flush()
+        # flush() returns False on HTTP errors (graceful failure)
+        result = sdk.flush()
+        self.assertFalse(result)
         
         sdk.clear_queue()
         sdk.shutdown()
 
     @responses.activate
     def test_send_events_api_error(self):
-        """Test event sending with API error response raises"""
+        """Test event sending with API error response returns False"""
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
@@ -410,9 +411,51 @@ class TestLiteSOCSendEvents(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key", batching=True)
         sdk.track("auth.login_success", actor_id="user_123")
         
-        # flush() re-raises API errors
-        with self.assertRaises(Exception):
-            sdk.flush()
+        # flush() returns False on API errors (graceful failure)
+        result = sdk.flush()
+        self.assertFalse(result)
+        
+        sdk.clear_queue()
+        sdk.shutdown()
+
+
+class TestTimeoutHandling(unittest.TestCase):
+    """Test timeout handling for track and flush"""
+
+    @responses.activate
+    def test_track_timeout_returns_false(self):
+        """Test track returns False on timeout when batching disabled"""
+        responses.add(
+            responses.POST,
+            "https://api.litesoc.io/collect",
+            body=requests.exceptions.Timeout("Connection timed out"),
+        )
+        
+        sdk = LiteSOC(api_key="test-key", batching=False, timeout=1.0)
+        result = sdk.track("auth.login_success", actor_id="user_123")
+        
+        # Should return False on timeout
+        self.assertFalse(result)
+        sdk.shutdown()
+
+    @responses.activate
+    def test_flush_timeout_returns_false_and_requeues(self):
+        """Test flush returns False on timeout and re-queues events"""
+        responses.add(
+            responses.POST,
+            "https://api.litesoc.io/collect",
+            body=requests.exceptions.Timeout("Connection timed out"),
+        )
+        
+        sdk = LiteSOC(api_key="test-key", batching=True, batch_size=10, timeout=1.0)
+        sdk.track("auth.login_success", actor_id="user_123")
+        
+        # Flush should return False on timeout
+        result = sdk.flush()
+        self.assertFalse(result)
+        
+        # Events should be re-queued for retry
+        self.assertGreater(sdk.get_queue_size(), 0)
         
         sdk.clear_queue()
         sdk.shutdown()
@@ -671,6 +714,15 @@ class TestLiteSOCUserAgent(unittest.TestCase):
         self.assertIn("2.0.0", user_agent)
         sdk.shutdown()
 
+    def test_api_key_header(self):
+        """Test X-API-Key header is set correctly"""
+        sdk = LiteSOC(api_key="test-api-key-12345")
+        api_key_header = sdk._session.headers.get("X-API-Key")
+        self.assertEqual(api_key_header, "test-api-key-12345")
+        # Ensure Authorization header is NOT used
+        self.assertIsNone(sdk._session.headers.get("Authorization"))
+        sdk.shutdown()
+
 
 class TestManagementAPI(unittest.TestCase):
     """Test Management API methods"""
@@ -856,7 +908,7 @@ class TestManagementAPIErrors(unittest.TestCase):
 
     @responses.activate
     def test_403_plan_restricted(self):
-        """Test 403 plan restricted error"""
+        """Test 403 plan restricted error with upgrade hint"""
         responses.add(
             responses.GET,
             "https://api.litesoc.io/events",
@@ -869,6 +921,9 @@ class TestManagementAPIErrors(unittest.TestCase):
         
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertEqual(ctx.exception.required_plan, "pro")
+        # Verify upgrade hint is included in message
+        self.assertIn("Upgrade to", str(ctx.exception))
+        self.assertIn("pro", str(ctx.exception))
 
     @responses.activate
     def test_429_rate_limit(self):

@@ -3,6 +3,7 @@ LiteSOC Python SDK Client
 """
 
 import atexit
+import logging
 import threading
 from datetime import datetime, timezone
 from typing import Any, Optional, Union
@@ -25,6 +26,12 @@ __version__ = "2.0.0"
 
 # Default base URL for the API
 DEFAULT_BASE_URL = "https://api.litesoc.io"
+
+# Default timeout for API requests (5 seconds for fast, non-blocking behavior)
+DEFAULT_TIMEOUT = 5.0
+
+# Set up logger
+logger = logging.getLogger("litesoc")
 
 
 class LiteSOC:
@@ -64,7 +71,7 @@ class LiteSOC:
         flush_interval: float = 5.0,
         debug: bool = False,
         silent: bool = True,
-        timeout: float = 30.0,
+        timeout: float = DEFAULT_TIMEOUT,
     ) -> None:
         """
         Initialize the LiteSOC SDK.
@@ -78,7 +85,7 @@ class LiteSOC:
             flush_interval: Seconds between auto-flushes (default: 5.0)
             debug: Enable debug logging (default: False)
             silent: Fail silently on errors (default: True)
-            timeout: Request timeout in seconds (default: 30.0)
+            timeout: Request timeout in seconds (default: 5.0)
         
         Raises:
             ValueError: If api_key is not provided
@@ -117,7 +124,7 @@ class LiteSOC:
         # Set up session headers
         self._session.headers.update({
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {api_key}",
+            "X-API-Key": api_key,
             "User-Agent": f"litesoc-python-sdk/{__version__}",
         })
         
@@ -137,7 +144,8 @@ class LiteSOC:
         severity: Optional[Union[EventSeverity, str]] = None,
         metadata: Optional[dict[str, Any]] = None,
         timestamp: Optional[Union[datetime, str]] = None,
-    ) -> None:
+        timeout: Optional[float] = None,
+    ) -> bool:
         """
         Track a security event.
         
@@ -150,6 +158,10 @@ class LiteSOC:
             severity: Event severity level
             metadata: Additional event metadata
             timestamp: Custom timestamp (defaults to now)
+            timeout: Request timeout in seconds (overrides class default)
+        
+        Returns:
+            bool: True if event was queued/sent successfully, False on timeout or error
         
         Example:
             ```python
@@ -161,11 +173,10 @@ class LiteSOC:
                 metadata={"reason": "invalid_password"}
             )
             
-            # Track with Actor object
-            from litesoc import Actor
+            # Track with custom timeout
             litesoc.track("auth.login_failed",
-                actor=Actor(id="user_123", email="user@example.com"),
-                user_ip="192.168.1.1"
+                actor_id="user_123",
+                timeout=2.0  # 2 second timeout
             )
             ```
         """
@@ -231,28 +242,46 @@ class LiteSOC:
                 self._log(f"Event queued. Queue size: {queue_size}")
                 
                 if queue_size >= self._config.batch_size:
-                    self.flush()
+                    self.flush(timeout=timeout)
                 else:
                     self._schedule_flush()
             else:
-                self._send_events([queued_event])
+                self._send_events([queued_event], timeout=timeout)
+            
+            return True
         
+        except requests.exceptions.Timeout:
+            logger.warning(
+                f"LiteSOC: Timeout while tracking event '{event_name}'. "
+                "Event will be retried on next flush."
+            )
+            return False
         except Exception as e:
             self._handle_error("track", e)
+            return False
     
-    def flush(self) -> None:
+    def flush(self, *, timeout: Optional[float] = None) -> bool:
         """
         Flush all queued events to the server.
+        
+        Args:
+            timeout: Request timeout in seconds (overrides class default)
+        
+        Returns:
+            bool: True if flush was successful, False on timeout or error
         
         Example:
             ```python
             # Flush before application shutdown
             litesoc.flush()
+            
+            # Flush with custom timeout
+            litesoc.flush(timeout=10.0)
             ```
         """
         if self._is_flushing:
             self._log("Flush already in progress, skipping")
-            return
+            return True
         
         # Cancel scheduled flush
         if self._flush_timer is not None:
@@ -266,13 +295,25 @@ class LiteSOC:
         
         if not events:
             self._log("No events to flush")
-            return
+            return True
         
         self._is_flushing = True
         self._log(f"Flushing {len(events)} events")
         
         try:
-            self._send_events(events)
+            self._send_events(events, timeout=timeout)
+            return True
+        except requests.exceptions.Timeout:
+            logger.warning(
+                f"LiteSOC: Timeout while flushing {len(events)} events. "
+                "Events will be retried."
+            )
+            # Re-queue events for retry
+            with self._queue_lock:
+                self._queue = events + self._queue
+            return False
+        except Exception:
+            return False
         finally:
             self._is_flushing = False
     
@@ -449,6 +490,7 @@ class LiteSOC:
         status: Optional[str] = None,
         severity: Optional[str] = None,
         limit: int = 100,
+        timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         """
         Get alerts from the Management API.
@@ -457,6 +499,7 @@ class LiteSOC:
             status: Filter by status ('open', 'resolved', 'safe')
             severity: Filter by severity ('low', 'medium', 'high', 'critical')
             limit: Maximum number of alerts to return (default: 100)
+            timeout: Request timeout in seconds (overrides class default)
         
         Returns:
             Dictionary containing alerts data
@@ -480,14 +523,20 @@ class LiteSOC:
         if severity is not None:
             params["severity"] = severity
         
-        return self._api_request("GET", "/alerts", params=params)
+        return self._api_request("GET", "/alerts", params=params, timeout=timeout)
     
-    def get_alert(self, alert_id: str) -> dict[str, Any]:
+    def get_alert(
+        self,
+        alert_id: str,
+        *,
+        timeout: Optional[float] = None,
+    ) -> dict[str, Any]:
         """
         Get a single alert by ID.
         
         Args:
             alert_id: The alert ID
+            timeout: Request timeout in seconds (overrides class default)
         
         Returns:
             Dictionary containing alert data
@@ -503,7 +552,7 @@ class LiteSOC:
             print(f"Alert type: {alert['type']}")
             ```
         """
-        return self._api_request("GET", f"/alerts/{alert_id}")
+        return self._api_request("GET", f"/alerts/{alert_id}", timeout=timeout)
     
     def resolve_alert(
         self,
@@ -511,6 +560,7 @@ class LiteSOC:
         resolution_type: str,
         *,
         notes: Optional[str] = None,
+        timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         """
         Resolve an alert.
@@ -519,6 +569,7 @@ class LiteSOC:
             alert_id: The alert ID
             resolution_type: Resolution type ('fixed', 'false_positive', 'ignored')
             notes: Optional resolution notes
+            timeout: Request timeout in seconds (overrides class default)
         
         Returns:
             Dictionary containing updated alert data
@@ -544,13 +595,14 @@ class LiteSOC:
         if notes is not None:
             body["notes"] = notes
         
-        return self._api_request("PATCH", f"/alerts/{alert_id}", json=body)
+        return self._api_request("PATCH", f"/alerts/{alert_id}", json=body, timeout=timeout)
     
     def mark_alert_safe(
         self,
         alert_id: str,
         *,
         notes: Optional[str] = None,
+        timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         """
         Mark an alert as safe/false positive.
@@ -558,6 +610,7 @@ class LiteSOC:
         Args:
             alert_id: The alert ID
             notes: Optional notes explaining why this is safe
+            timeout: Request timeout in seconds (overrides class default)
         
         Returns:
             Dictionary containing updated alert data
@@ -579,18 +632,20 @@ class LiteSOC:
         if notes is not None:
             body["notes"] = notes
         
-        return self._api_request("PATCH", f"/alerts/{alert_id}", json=body)
+        return self._api_request("PATCH", f"/alerts/{alert_id}", json=body, timeout=timeout)
     
     def get_events(
         self,
         *,
         limit: int = 20,
+        timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         """
         Get events from the Management API.
         
         Args:
             limit: Maximum number of events to return (default: 20)
+            timeout: Request timeout in seconds (overrides class default)
         
         Returns:
             Dictionary containing events data
@@ -608,14 +663,20 @@ class LiteSOC:
                 print(f"Event: {event['type']} - {event['timestamp']}")
             ```
         """
-        return self._api_request("GET", "/events", params={"limit": limit})
+        return self._api_request("GET", "/events", params={"limit": limit}, timeout=timeout)
     
-    def get_event(self, event_id: str) -> dict[str, Any]:
+    def get_event(
+        self,
+        event_id: str,
+        *,
+        timeout: Optional[float] = None,
+    ) -> dict[str, Any]:
         """
         Get a single event by ID.
         
         Args:
             event_id: The event ID
+            timeout: Request timeout in seconds (overrides class default)
         
         Returns:
             Dictionary containing event data
@@ -631,7 +692,7 @@ class LiteSOC:
             print(f"Event type: {event['type']}")
             ```
         """
-        return self._api_request("GET", f"/events/{event_id}")
+        return self._api_request("GET", f"/events/{event_id}", timeout=timeout)
     
     # ============================================
     # PRIVATE METHODS
@@ -644,6 +705,7 @@ class LiteSOC:
         *,
         params: Optional[dict[str, Any]] = None,
         json: Optional[dict[str, Any]] = None,
+        timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         """
         Make a request to the Management API.
@@ -653,6 +715,7 @@ class LiteSOC:
             path: API path (e.g., '/alerts')
             params: Query parameters
             json: Request body
+            timeout: Request timeout in seconds (overrides class default)
         
         Returns:
             Dictionary containing API response
@@ -664,6 +727,7 @@ class LiteSOC:
             LiteSOCError: For other API errors
         """
         url = f"{self._base_url}{path}"
+        request_timeout = timeout if timeout is not None else self._config.timeout
         
         try:
             response = self._session.request(
@@ -671,7 +735,7 @@ class LiteSOC:
                 url,
                 params=params,
                 json=json,
-                timeout=self._config.timeout,
+                timeout=request_timeout,
             )
             
             # Handle errors
@@ -711,18 +775,18 @@ class LiteSOC:
             try:
                 data = response.json()
                 if data.get("code") == "PLAN_RESTRICTED":
+                    required_plan = data.get("required_plan", "Business or Enterprise")
+                    hint = f" Upgrade to {required_plan} plan to access this feature."
                     raise PlanRestrictedError(
-                        message,
+                        message + hint,
                         status_code=status_code,
                         error_code=error_code,
-                        required_plan=data.get("required_plan"),
+                        required_plan=required_plan,
                     )
-            except (PlanRestrictedError, ValueError, KeyError):
-                if isinstance(
-                    response.json() if response.text else {},
-                    dict
-                ) and response.json().get("code") == "PLAN_RESTRICTED":
-                    raise
+            except PlanRestrictedError:
+                raise
+            except (ValueError, KeyError):  # pragma: no cover
+                pass  # pragma: no cover
             raise LiteSOCAuthError(
                 message,
                 status_code=status_code,
@@ -764,10 +828,12 @@ class LiteSOC:
         except Exception as e:  # pragma: no cover
             self._handle_error("scheduled flush", e)  # pragma: no cover
     
-    def _send_events(self, events: list[QueuedEvent]) -> None:
+    def _send_events(self, events: list[QueuedEvent], *, timeout: Optional[float] = None) -> None:
         """Send events to the LiteSOC API."""
         if not events:
             return
+        
+        request_timeout = timeout if timeout is not None else self._config.timeout
         
         try:
             # Single event or batch
@@ -780,7 +846,7 @@ class LiteSOC:
             response = self._session.post(
                 self._config.endpoint,
                 json=payload,
-                timeout=self._config.timeout,
+                timeout=request_timeout,
             )
             
             response.raise_for_status()

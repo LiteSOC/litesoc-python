@@ -369,4 +369,4 @@ class LiteSOCConfig:
     flush_interval: float = 5.0  # seconds
     debug: bool = False
     silent: bool = True
-    timeout: float = 30.0  # seconds
+    timeout: float = 5.0  # seconds (optimized for non-blocking behavior)

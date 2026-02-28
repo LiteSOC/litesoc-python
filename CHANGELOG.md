@@ -27,10 +27,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`RateLimitError`** - Rate limit exceeded (429) with `retry_after` attribute
 - **`PlanRestrictedError`** - Plan restriction errors with `required_plan` attribute
 
+#### Method-level Timeout Overrides
+- All Management API methods now support an optional `timeout` parameter
+- `track()`, `flush()`, `get_alerts()`, `get_alert()`, `resolve_alert()`, `mark_alert_safe()`, `get_events()`, `get_event()` accept `timeout` parameter
+- Per-request timeouts take precedence over the class-level default
+
 ### Changed
+- **Default Timeout** - Reduced from 30 seconds to **5 seconds** for faster failure detection
+- **Authentication Header** - Changed from `Authorization: Bearer` to `X-API-Key` header
 - **Base URL Configuration** - New `base_url` parameter (default: `https://api.litesoc.io`)
   - The `endpoint` parameter is now deprecated but still supported for backward compatibility
 - **User-Agent Format** - Updated from `litesoc-python/x.x.x` to `litesoc-python-sdk/x.x.x`
+- **`track()` Return Value** - Now returns `bool` (`True` on success, `False` on timeout) for graceful timeout handling
+- **403 Error Messages** - Now include upgrade hints (e.g., "Upgrade to Business plan to access this feature")
 
 ### Breaking Changes
 - None - All v1.x code continues to work. The `endpoint` parameter is deprecated but fully supported.
