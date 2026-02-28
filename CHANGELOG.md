@@ -5,6 +5,35 @@ All notable changes to the LiteSOC Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-03-01
+
+### Added
+
+#### Alert Model Enhancements
+- **`trigger_event_id`** - New field on `Alert` dataclass linking alerts to their triggering event
+- **`forensics`** - New field on `Alert` dataclass containing network intelligence and location data
+
+#### Forensics Types (Pro/Enterprise)
+- **`Forensics`** - Container dataclass for network and location forensics data
+- **`NetworkForensics`** - Network intelligence dataclass including:
+  - `is_vpn`, `is_tor`, `is_proxy`, `is_datacenter`, `is_mobile` - Boolean flags
+  - `asn`, `asn_org`, `isp` - Autonomous System and ISP information
+- **`LocationForensics`** - GeoIP location dataclass including:
+  - `city`, `region`, `country_code`, `country_name` - Location strings
+  - `latitude`, `longitude` - Coordinates
+  - `timezone` - IANA timezone identifier
+
+#### New Exports
+- Added `Alert`, `Forensics`, `NetworkForensics`, `LocationForensics` to module exports
+
+### Changed
+- **Version** - Updated to 2.1.0
+
+### Notes
+- `forensics` returns `None` for Free tier users - ensure null-safe access in your code
+- `trigger_event_id` may be `None` for alerts not triggered by a specific event
+- All new dataclasses include `from_dict()` and `to_dict()` methods for easy serialization
+
 ## [2.0.0] - 2026-02-28
 
 ### Added

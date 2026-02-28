@@ -443,3 +443,298 @@ class ResponseMetadata:
             "retention_days": self.retention_days,
             "cutoff_date": self.cutoff_date,
         }
+
+
+# =============================================================================
+# FORENSICS TYPES (Pro/Enterprise plans only)
+# =============================================================================
+
+
+@dataclass
+class NetworkForensics:
+    """
+    Network forensics information (Pro/Enterprise plans only).
+    
+    Contains network intelligence data including VPN, Tor, proxy detection,
+    and ISP/ASN information.
+    
+    Note: Returns None for Free tier users.
+    """
+    
+    is_vpn: bool
+    """Whether the IP is from a VPN provider."""
+    
+    is_tor: bool
+    """Whether the IP is a Tor exit node."""
+    
+    is_proxy: bool
+    """Whether the IP is from a proxy server."""
+    
+    is_datacenter: bool
+    """Whether the IP is from a datacenter/cloud provider."""
+    
+    is_mobile: bool
+    """Whether the IP is from a mobile carrier."""
+    
+    asn: Optional[int] = None
+    """Autonomous System Number."""
+    
+    asn_org: Optional[str] = None
+    """Autonomous System Organization name."""
+    
+    isp: Optional[str] = None
+    """Internet Service Provider name."""
+    
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "NetworkForensics":
+        """Create NetworkForensics from API response dictionary."""
+        return cls(
+            is_vpn=data.get("is_vpn", False),
+            is_tor=data.get("is_tor", False),
+            is_proxy=data.get("is_proxy", False),
+            is_datacenter=data.get("is_datacenter", False),
+            is_mobile=data.get("is_mobile", False),
+            asn=data.get("asn"),
+            asn_org=data.get("asn_org"),
+            isp=data.get("isp"),
+        )
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "is_vpn": self.is_vpn,
+            "is_tor": self.is_tor,
+            "is_proxy": self.is_proxy,
+            "is_datacenter": self.is_datacenter,
+            "is_mobile": self.is_mobile,
+            "asn": self.asn,
+            "asn_org": self.asn_org,
+            "isp": self.isp,
+        }
+
+
+@dataclass
+class LocationForensics:
+    """
+    Location forensics information (Pro/Enterprise plans only).
+    
+    Contains GeoIP location data including city, country, and coordinates.
+    
+    Note: Returns None for Free tier users.
+    """
+    
+    city: Optional[str] = None
+    """City name."""
+    
+    region: Optional[str] = None
+    """Region/state name."""
+    
+    country_code: Optional[str] = None
+    """ISO 3166-1 alpha-2 country code (e.g., 'US', 'GB')."""
+    
+    country_name: Optional[str] = None
+    """Full country name."""
+    
+    latitude: Optional[float] = None
+    """Latitude coordinate."""
+    
+    longitude: Optional[float] = None
+    """Longitude coordinate."""
+    
+    timezone: Optional[str] = None
+    """Timezone (e.g., 'America/New_York')."""
+    
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "LocationForensics":
+        """Create LocationForensics from API response dictionary."""
+        return cls(
+            city=data.get("city"),
+            region=data.get("region"),
+            country_code=data.get("country_code"),
+            country_name=data.get("country_name"),
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+            timezone=data.get("timezone"),
+        )
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "city": self.city,
+            "region": self.region,
+            "country_code": self.country_code,
+            "country_name": self.country_name,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "timezone": self.timezone,
+        }
+
+
+@dataclass
+class Forensics:
+    """
+    Forensics data attached to alerts (Pro/Enterprise plans only).
+    
+    Contains network intelligence and location data for threat analysis.
+    
+    Note: Returns None for Free tier users.
+    
+    Example:
+        ```python
+        alert = litesoc.get_alert("alert_123")
+        if alert.get("forensics"):
+            forensics = Forensics.from_dict(alert["forensics"])
+            if forensics.network.is_vpn:
+                print("Alert originated from VPN")
+            print(f"Location: {forensics.location.city}, {forensics.location.country_code}")
+        ```
+    """
+    
+    network: NetworkForensics
+    """Network intelligence data."""
+    
+    location: LocationForensics
+    """Location/GeoIP data."""
+    
+    @classmethod
+    def from_dict(cls, data: Optional[dict[str, Any]]) -> Optional["Forensics"]:
+        """
+        Create Forensics from API response dictionary.
+        
+        Args:
+            data: Forensics dictionary from API response, or None
+        
+        Returns:
+            Forensics instance, or None if data is None (Free tier)
+        """
+        if data is None:
+            return None
+        
+        return cls(
+            network=NetworkForensics.from_dict(data.get("network", {})),
+            location=LocationForensics.from_dict(data.get("location", {})),
+        )
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "network": self.network.to_dict(),
+            "location": self.location.to_dict(),
+        }
+
+
+@dataclass
+class Alert:
+    """
+    Alert object returned from the Management API.
+    
+    Represents a security alert detected by LiteSOC's threat detection engine.
+    
+    Example:
+        ```python
+        alerts_data = litesoc.get_alerts(status="open")
+        for alert_data in alerts_data.get("data", []):
+            alert = Alert.from_dict(alert_data)
+            print(f"{alert.title} - {alert.severity}")
+            if alert.forensics:
+                print(f"  VPN: {alert.forensics.network.is_vpn}")
+                print(f"  Location: {alert.forensics.location.city}")
+        ```
+    """
+    
+    id: str
+    """Unique alert identifier."""
+    
+    alert_type: str
+    """Alert type (e.g., 'brute_force_attack', 'impossible_travel')."""
+    
+    severity: str
+    """Alert severity ('low', 'medium', 'high', 'critical')."""
+    
+    status: str
+    """Alert status ('open', 'acknowledged', 'resolved', 'dismissed')."""
+    
+    title: str
+    """Human-readable alert title."""
+    
+    description: Optional[str] = None
+    """Detailed alert description."""
+    
+    source_ip: Optional[str] = None
+    """Source IP address that triggered the alert."""
+    
+    actor_id: Optional[str] = None
+    """Actor/user ID associated with the alert."""
+    
+    trigger_event_id: Optional[str] = None
+    """The event ID that triggered this alert."""
+    
+    forensics: Optional[Forensics] = None
+    """
+    Forensics data (network intelligence + location).
+    Only available on Pro/Enterprise plans. Returns None for Free tier.
+    """
+    
+    created_at: Optional[str] = None
+    """ISO 8601 timestamp when alert was created."""
+    
+    updated_at: Optional[str] = None
+    """ISO 8601 timestamp when alert was last updated."""
+    
+    resolved_at: Optional[str] = None
+    """ISO 8601 timestamp when alert was resolved (if resolved)."""
+    
+    resolution_notes: Optional[str] = None
+    """Notes explaining the resolution."""
+    
+    metadata: Optional[dict[str, Any]] = None
+    """Additional metadata."""
+    
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Alert":
+        """
+        Create Alert from API response dictionary.
+        
+        Args:
+            data: Alert dictionary from API response
+        
+        Returns:
+            Alert instance
+        """
+        return cls(
+            id=data["id"],
+            alert_type=data.get("alert_type", ""),
+            severity=data.get("severity", ""),
+            status=data.get("status", ""),
+            title=data.get("title", ""),
+            description=data.get("description"),
+            source_ip=data.get("source_ip"),
+            actor_id=data.get("actor_id"),
+            trigger_event_id=data.get("trigger_event_id"),
+            forensics=Forensics.from_dict(data.get("forensics")),
+            created_at=data.get("created_at"),
+            updated_at=data.get("updated_at"),
+            resolved_at=data.get("resolved_at"),
+            resolution_notes=data.get("resolution_notes"),
+            metadata=data.get("metadata"),
+        )
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "alert_type": self.alert_type,
+            "severity": self.severity,
+            "status": self.status,
+            "title": self.title,
+            "description": self.description,
+            "source_ip": self.source_ip,
+            "actor_id": self.actor_id,
+            "trigger_event_id": self.trigger_event_id,
+            "forensics": self.forensics.to_dict() if self.forensics else None,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            "resolved_at": self.resolved_at,
+            "resolution_notes": self.resolution_notes,
+            "metadata": self.metadata,
+        }

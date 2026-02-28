@@ -27,6 +27,7 @@ from litesoc.client import LiteSOC
 from litesoc.types import (
     Actor,
     AdminEvent,
+    Alert,
     ApiEvent,
     AuthEvent,
     AuthzEvent,
@@ -34,9 +35,12 @@ from litesoc.types import (
     DataEvent,
     EventSeverity,
     EventType,
+    Forensics,
     LiteSOCAuthError,
     LiteSOCConfig,
     LiteSOCError,
+    LocationForensics,
+    NetworkForensics,
     PlanRestrictedError,
     QueuedEvent,
     RateLimitError,
@@ -47,7 +51,7 @@ from litesoc.types import (
     UserEvent,
 )
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 __all__ = [
     # Core client
     "LiteSOC",
@@ -58,6 +62,10 @@ __all__ = [
     "PlanRestrictedError",
     # Types
     "Actor",
+    "Alert",
+    "Forensics",
+    "LocationForensics",
+    "NetworkForensics",
     "TrackOptions",
     "EventType",
     "EventSeverity",

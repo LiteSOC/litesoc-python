@@ -712,7 +712,7 @@ class TestLiteSOCUserAgent(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key")
         user_agent = sdk._session.headers.get("User-Agent")
         self.assertTrue(user_agent.startswith("litesoc-python-sdk/"))
-        self.assertIn("2.0.0", user_agent)
+        self.assertIn("2.1.0", user_agent)
         sdk.shutdown()
 
     def test_api_key_header(self):
@@ -1148,6 +1148,378 @@ class TestPlanRestrictedErrorUpgradeUrl(unittest.TestCase):
         """Test that upgrade URL is set on instance"""
         error = PlanRestrictedError("Test error")
         self.assertEqual(error.upgrade_url, "https://www.litesoc.io/pricing")
+
+
+class TestNetworkForensics(unittest.TestCase):
+    """Test NetworkForensics dataclass"""
+    
+    def test_from_dict_full(self):
+        """Test creating NetworkForensics from full data"""
+        from litesoc import NetworkForensics
+        
+        data = {
+            "is_vpn": True,
+            "is_tor": False,
+            "is_proxy": True,
+            "is_datacenter": True,
+            "is_mobile": False,
+            "asn": 12345,
+            "asn_org": "Example Hosting Inc",
+            "isp": "Example ISP",
+        }
+        
+        network = NetworkForensics.from_dict(data)
+        
+        self.assertTrue(network.is_vpn)
+        self.assertFalse(network.is_tor)
+        self.assertTrue(network.is_proxy)
+        self.assertTrue(network.is_datacenter)
+        self.assertFalse(network.is_mobile)
+        self.assertEqual(network.asn, 12345)
+        self.assertEqual(network.asn_org, "Example Hosting Inc")
+        self.assertEqual(network.isp, "Example ISP")
+    
+    def test_from_dict_partial(self):
+        """Test creating NetworkForensics from partial data"""
+        from litesoc import NetworkForensics
+        
+        data = {
+            "is_vpn": False,
+            "is_tor": True,
+        }
+        
+        network = NetworkForensics.from_dict(data)
+        
+        self.assertFalse(network.is_vpn)
+        self.assertTrue(network.is_tor)
+        self.assertFalse(network.is_proxy)  # Default to False
+        self.assertFalse(network.is_datacenter)
+        self.assertFalse(network.is_mobile)
+        self.assertIsNone(network.asn)
+        self.assertIsNone(network.asn_org)
+        self.assertIsNone(network.isp)
+    
+    def test_to_dict(self):
+        """Test NetworkForensics to_dict method"""
+        from litesoc import NetworkForensics
+        
+        network = NetworkForensics(
+            is_vpn=True,
+            is_tor=False,
+            is_proxy=False,
+            is_datacenter=True,
+            is_mobile=False,
+            asn=67890,
+            asn_org="Test Org",
+            isp="Test ISP",
+        )
+        
+        result = network.to_dict()
+        
+        self.assertEqual(result["is_vpn"], True)
+        self.assertEqual(result["is_tor"], False)
+        self.assertEqual(result["asn"], 67890)
+        self.assertEqual(result["asn_org"], "Test Org")
+
+
+class TestLocationForensics(unittest.TestCase):
+    """Test LocationForensics dataclass"""
+    
+    def test_from_dict_full(self):
+        """Test creating LocationForensics from full data"""
+        from litesoc import LocationForensics
+        
+        data = {
+            "city": "New York",
+            "region": "New York",
+            "country_code": "US",
+            "country_name": "United States",
+            "latitude": 40.7128,
+            "longitude": -74.006,
+            "timezone": "America/New_York",
+        }
+        
+        location = LocationForensics.from_dict(data)
+        
+        self.assertEqual(location.city, "New York")
+        self.assertEqual(location.region, "New York")
+        self.assertEqual(location.country_code, "US")
+        self.assertEqual(location.country_name, "United States")
+        self.assertEqual(location.latitude, 40.7128)
+        self.assertEqual(location.longitude, -74.006)
+        self.assertEqual(location.timezone, "America/New_York")
+    
+    def test_from_dict_partial(self):
+        """Test creating LocationForensics from partial data"""
+        from litesoc import LocationForensics
+        
+        data = {
+            "country_code": "GB",
+        }
+        
+        location = LocationForensics.from_dict(data)
+        
+        self.assertIsNone(location.city)
+        self.assertIsNone(location.region)
+        self.assertEqual(location.country_code, "GB")
+        self.assertIsNone(location.country_name)
+        self.assertIsNone(location.latitude)
+        self.assertIsNone(location.longitude)
+        self.assertIsNone(location.timezone)
+    
+    def test_to_dict(self):
+        """Test LocationForensics to_dict method"""
+        from litesoc import LocationForensics
+        
+        location = LocationForensics(
+            city="London",
+            region="England",
+            country_code="GB",
+            country_name="United Kingdom",
+            latitude=51.5074,
+            longitude=-0.1278,
+            timezone="Europe/London",
+        )
+        
+        result = location.to_dict()
+        
+        self.assertEqual(result["city"], "London")
+        self.assertEqual(result["country_code"], "GB")
+        self.assertEqual(result["latitude"], 51.5074)
+
+
+class TestForensics(unittest.TestCase):
+    """Test Forensics dataclass"""
+    
+    def test_from_dict_full(self):
+        """Test creating Forensics from full data"""
+        from litesoc import Forensics
+        
+        data = {
+            "network": {
+                "is_vpn": True,
+                "is_tor": False,
+                "is_proxy": False,
+                "is_datacenter": True,
+                "is_mobile": False,
+                "asn": 12345,
+                "asn_org": "Test Org",
+                "isp": "Test ISP",
+            },
+            "location": {
+                "city": "Berlin",
+                "region": "Berlin",
+                "country_code": "DE",
+                "country_name": "Germany",
+                "latitude": 52.52,
+                "longitude": 13.405,
+                "timezone": "Europe/Berlin",
+            },
+        }
+        
+        forensics = Forensics.from_dict(data)
+        
+        self.assertIsNotNone(forensics)
+        self.assertTrue(forensics.network.is_vpn)
+        self.assertEqual(forensics.network.asn, 12345)
+        self.assertEqual(forensics.location.city, "Berlin")
+        self.assertEqual(forensics.location.country_code, "DE")
+    
+    def test_from_dict_none(self):
+        """Test creating Forensics from None (Free tier)"""
+        from litesoc import Forensics
+        
+        forensics = Forensics.from_dict(None)
+        
+        self.assertIsNone(forensics)
+    
+    def test_from_dict_empty(self):
+        """Test creating Forensics from empty data"""
+        from litesoc import Forensics
+        
+        forensics = Forensics.from_dict({})
+        
+        self.assertIsNotNone(forensics)
+        self.assertFalse(forensics.network.is_vpn)
+        self.assertIsNone(forensics.location.city)
+    
+    def test_to_dict(self):
+        """Test Forensics to_dict method"""
+        from litesoc import Forensics, NetworkForensics, LocationForensics
+        
+        forensics = Forensics(
+            network=NetworkForensics(
+                is_vpn=True,
+                is_tor=False,
+                is_proxy=False,
+                is_datacenter=False,
+                is_mobile=True,
+            ),
+            location=LocationForensics(
+                city="Tokyo",
+                country_code="JP",
+            ),
+        )
+        
+        result = forensics.to_dict()
+        
+        self.assertTrue(result["network"]["is_vpn"])
+        self.assertTrue(result["network"]["is_mobile"])
+        self.assertEqual(result["location"]["city"], "Tokyo")
+        self.assertEqual(result["location"]["country_code"], "JP")
+
+
+class TestAlert(unittest.TestCase):
+    """Test Alert dataclass"""
+    
+    def test_from_dict_full(self):
+        """Test creating Alert from full data"""
+        from litesoc import Alert
+        
+        data = {
+            "id": "alert_abc123",
+            "alert_type": "brute_force_attack",
+            "severity": "high",
+            "status": "open",
+            "title": "Brute Force Attack Detected",
+            "description": "Multiple failed login attempts from single IP",
+            "source_ip": "192.168.1.100",
+            "actor_id": "user_123",
+            "trigger_event_id": "evt_xyz789",
+            "forensics": {
+                "network": {
+                    "is_vpn": True,
+                    "is_tor": False,
+                    "is_proxy": False,
+                    "is_datacenter": True,
+                    "is_mobile": False,
+                    "asn": 12345,
+                    "asn_org": "Example Hosting",
+                    "isp": "Example ISP",
+                },
+                "location": {
+                    "city": "New York",
+                    "region": "New York",
+                    "country_code": "US",
+                    "country_name": "United States",
+                    "latitude": 40.7128,
+                    "longitude": -74.006,
+                    "timezone": "America/New_York",
+                },
+            },
+            "created_at": "2026-03-01T12:00:00Z",
+            "updated_at": "2026-03-01T12:30:00Z",
+            "resolved_at": None,
+            "resolution_notes": None,
+            "metadata": {"attempts": 50},
+        }
+        
+        alert = Alert.from_dict(data)
+        
+        self.assertEqual(alert.id, "alert_abc123")
+        self.assertEqual(alert.alert_type, "brute_force_attack")
+        self.assertEqual(alert.severity, "high")
+        self.assertEqual(alert.status, "open")
+        self.assertEqual(alert.title, "Brute Force Attack Detected")
+        self.assertEqual(alert.trigger_event_id, "evt_xyz789")
+        self.assertIsNotNone(alert.forensics)
+        self.assertTrue(alert.forensics.network.is_vpn)
+        self.assertEqual(alert.forensics.network.asn, 12345)
+        self.assertEqual(alert.forensics.location.city, "New York")
+        self.assertEqual(alert.forensics.location.country_code, "US")
+        self.assertEqual(alert.metadata, {"attempts": 50})
+    
+    def test_from_dict_minimal(self):
+        """Test creating Alert from minimal data"""
+        from litesoc import Alert
+        
+        data = {
+            "id": "alert_minimal",
+        }
+        
+        alert = Alert.from_dict(data)
+        
+        self.assertEqual(alert.id, "alert_minimal")
+        self.assertEqual(alert.alert_type, "")
+        self.assertEqual(alert.severity, "")
+        self.assertEqual(alert.status, "")
+        self.assertEqual(alert.title, "")
+        self.assertIsNone(alert.trigger_event_id)
+        self.assertIsNone(alert.forensics)
+        self.assertIsNone(alert.description)
+    
+    def test_from_dict_null_forensics_free_tier(self):
+        """Test creating Alert with null forensics (Free tier)"""
+        from litesoc import Alert
+        
+        data = {
+            "id": "alert_free",
+            "alert_type": "geo_anomaly",
+            "severity": "medium",
+            "status": "open",
+            "title": "Geographic Anomaly",
+            "trigger_event_id": "evt_123",
+            "forensics": None,
+        }
+        
+        alert = Alert.from_dict(data)
+        
+        self.assertEqual(alert.id, "alert_free")
+        self.assertEqual(alert.trigger_event_id, "evt_123")
+        self.assertIsNone(alert.forensics)
+        # Accessing forensics properties should not throw
+        if alert.forensics:
+            _ = alert.forensics.network.is_vpn
+    
+    def test_to_dict(self):
+        """Test Alert to_dict method"""
+        from litesoc import Alert, Forensics, NetworkForensics, LocationForensics
+        
+        alert = Alert(
+            id="alert_test",
+            alert_type="impossible_travel",
+            severity="critical",
+            status="open",
+            title="Impossible Travel Detected",
+            trigger_event_id="evt_abc",
+            forensics=Forensics(
+                network=NetworkForensics(
+                    is_vpn=False,
+                    is_tor=True,
+                    is_proxy=False,
+                    is_datacenter=False,
+                    is_mobile=False,
+                ),
+                location=LocationForensics(city="Paris", country_code="FR"),
+            ),
+        )
+        
+        result = alert.to_dict()
+        
+        self.assertEqual(result["id"], "alert_test")
+        self.assertEqual(result["trigger_event_id"], "evt_abc")
+        self.assertIsNotNone(result["forensics"])
+        self.assertTrue(result["forensics"]["network"]["is_tor"])
+        self.assertEqual(result["forensics"]["location"]["city"], "Paris")
+    
+    def test_to_dict_null_forensics(self):
+        """Test Alert to_dict with null forensics"""
+        from litesoc import Alert
+        
+        alert = Alert(
+            id="alert_no_forensics",
+            alert_type="suspicious_activity",
+            severity="low",
+            status="resolved",
+            title="Suspicious Activity",
+            forensics=None,
+        )
+        
+        result = alert.to_dict()
+        
+        self.assertEqual(result["id"], "alert_no_forensics")
+        self.assertIsNone(result["forensics"])
+        self.assertIsNone(result["trigger_event_id"])
 
 
 if __name__ == "__main__":
