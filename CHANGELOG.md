@@ -5,6 +5,36 @@ All notable changes to the LiteSOC Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-02-28
+
+### Added
+
+#### Management API
+- **`get_alerts(status, severity, limit)`** - Get alerts from the Management API with optional filters
+- **`get_alert(alert_id)`** - Get a single alert by ID
+- **`resolve_alert(alert_id, resolution_type, notes)`** - Resolve an alert with resolution type
+- **`mark_alert_safe(alert_id, notes)`** - Mark an alert as safe/false positive
+- **`get_events(limit)`** - Get events from the Management API
+- **`get_event(event_id)`** - Get a single event by ID
+
+#### SecurityEvents Enum
+- **`SecurityEvents`** - New enum class with all 26 standard security events
+- Use `SecurityEvents.AUTH_LOGIN_FAILED` instead of `"auth.login_failed"` for type safety
+
+#### Custom Exception Classes
+- **`LiteSOCError`** - Base exception class for all SDK errors
+- **`LiteSOCAuthError`** - Authentication/authorization errors (401/403)
+- **`RateLimitError`** - Rate limit exceeded (429) with `retry_after` attribute
+- **`PlanRestrictedError`** - Plan restriction errors with `required_plan` attribute
+
+### Changed
+- **Base URL Configuration** - New `base_url` parameter (default: `https://api.litesoc.io`)
+  - The `endpoint` parameter is now deprecated but still supported for backward compatibility
+- **User-Agent Format** - Updated from `litesoc-python/x.x.x` to `litesoc-python-sdk/x.x.x`
+
+### Breaking Changes
+- None - All v1.x code continues to work. The `endpoint` parameter is deprecated but fully supported.
+
 ## [1.2.0] - 2026-02-25
 
 ### Changed

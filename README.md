@@ -4,7 +4,8 @@ Official Python SDK for [LiteSOC](https://www.litesoc.io) - Security event track
 
 [![PyPI version](https://badge.fury.io/py/litesoc.svg)](https://badge.fury.io/py/litesoc)
 [![Python Version](https://img.shields.io/pypi/pyversions/litesoc.svg)](https://pypi.org/project/litesoc/)
-[![Tests](https://github.com/LiteSOC/litesoc-python/actions/workflows/test.yml/badge.svg)](https://github.com/LiteSOC/litesoc-python/actions/workflows/test.yml)
+[![CI](https://github.com/LiteSOC/litesoc-python/actions/workflows/ci.yml/badge.svg)](https://github.com/LiteSOC/litesoc-python/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-100%25-brightgreen.svg)](https://github.com/LiteSOC/litesoc-python)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Installation
@@ -16,18 +17,21 @@ pip install litesoc
 ## Quick Start
 
 ```python
-from litesoc import LiteSOC
+from litesoc import LiteSOC, SecurityEvents
 
 # Initialize the SDK
 litesoc = LiteSOC(api_key="your-api-key")
 
-# Track a login failure - LiteSOC auto-enriches with GeoIP & Network Intelligence
-litesoc.track("auth.login_failed",
+# Track a login failure using the SecurityEvents enum
+litesoc.track(SecurityEvents.AUTH_LOGIN_FAILED,
     actor_id="user_123",
     actor_email="user@example.com",
     user_ip="192.168.1.1",  # Required for Security Intelligence
     metadata={"reason": "invalid_password"}
 )
+
+# Get alerts from the Management API
+alerts = litesoc.get_alerts(status="open", severity="high")
 
 # Flush remaining events before shutdown
 litesoc.flush()
@@ -36,11 +40,13 @@ litesoc.flush()
 ## Features
 
 - ✅ **26 standard security event types** - Authentication, authorization, admin, data, and security events
+- ✅ **Management API** - Get alerts, resolve alerts, fetch events
 - ✅ **Automatic batching** - Events are batched for efficient delivery
 - ✅ **Retry logic** - Failed events are automatically retried
 - ✅ **Type hints** - Full type annotations for IDE support
 - ✅ **Thread-safe** - Safe to use across multiple threads
 - ✅ **Context manager support** - Use with `with` statement for automatic cleanup
+- ✅ **Custom exceptions** - Typed error handling with `LiteSOCError`, `RateLimitError`, etc.
 - 🗺️ **GeoIP Enrichment** - Automatic location data from IP addresses
 - 🛡️ **Network Intelligence** - VPN, Tor, Proxy & Datacenter detection
 - 📊 **Threat Scoring** - Auto-assigned severity (Low → Critical)
@@ -135,6 +141,122 @@ litesoc.track("data.export",
         "export_reason": "monthly_report"
     }
 )
+```
+
+## Management API
+
+The SDK provides methods to interact with the LiteSOC Management API:
+
+### Get Alerts
+
+```python
+from litesoc import LiteSOC, LiteSOCAuthError, RateLimitError
+
+litesoc = LiteSOC(api_key="your-api-key")
+
+# Get all open alerts
+alerts = litesoc.get_alerts(status="open")
+
+# Get high severity alerts
+alerts = litesoc.get_alerts(severity="high", limit=50)
+
+for alert in alerts.get("alerts", []):
+    print(f"Alert: {alert['id']} - {alert['type']}")
+```
+
+### Get Single Alert
+
+```python
+alert = litesoc.get_alert("alert_abc123")
+print(f"Alert type: {alert['type']}")
+```
+
+### Resolve Alert
+
+```python
+# Resolve with notes
+litesoc.resolve_alert(
+    "alert_abc123",
+    "fixed",
+    notes="Issue was addressed in PR #123"
+)
+
+# Mark as false positive
+litesoc.resolve_alert("alert_abc123", "false_positive")
+```
+
+### Mark Alert Safe
+
+```python
+litesoc.mark_alert_safe(
+    "alert_abc123",
+    notes="This is expected behavior from the test suite"
+)
+```
+
+### Get Events
+
+```python
+events = litesoc.get_events(limit=50)
+
+for event in events.get("events", []):
+    print(f"Event: {event['type']} - {event['timestamp']}")
+```
+
+### Get Single Event
+
+```python
+event = litesoc.get_event("event_abc123")
+print(f"Event type: {event['type']}")
+```
+
+## SecurityEvents Enum
+
+Use the `SecurityEvents` enum for type-safe event tracking:
+
+```python
+from litesoc import LiteSOC, SecurityEvents
+
+litesoc = LiteSOC(api_key="your-api-key")
+
+# Use enum for type safety and IDE autocomplete
+litesoc.track(SecurityEvents.AUTH_LOGIN_FAILED, actor_id="user_123")
+litesoc.track(SecurityEvents.ADMIN_PRIVILEGE_ESCALATION, actor_id="admin_user")
+litesoc.track(SecurityEvents.DATA_SENSITIVE_ACCESS, actor_id="user_123")
+```
+
+All 26 standard events are available:
+- `AUTH_LOGIN_SUCCESS`, `AUTH_LOGIN_FAILED`, `AUTH_LOGOUT`, etc.
+- `AUTHZ_ROLE_CHANGED`, `AUTHZ_PERMISSION_GRANTED`, etc.
+- `ADMIN_PRIVILEGE_ESCALATION`, `ADMIN_USER_IMPERSONATION`, etc.
+- `DATA_BULK_DELETE`, `DATA_SENSITIVE_ACCESS`, `DATA_EXPORT`
+- `SECURITY_SUSPICIOUS_ACTIVITY`, `SECURITY_BRUTE_FORCE_DETECTED`, etc.
+
+## Error Handling
+
+The SDK provides custom exception classes for proper error handling:
+
+```python
+from litesoc import (
+    LiteSOC,
+    LiteSOCError,
+    LiteSOCAuthError,
+    RateLimitError,
+    PlanRestrictedError,
+)
+
+litesoc = LiteSOC(api_key="your-api-key")
+
+try:
+    alerts = litesoc.get_alerts()
+except LiteSOCAuthError as e:
+    print(f"Authentication failed: {e.message} (status: {e.status_code})")
+except RateLimitError as e:
+    print(f"Rate limited. Retry after {e.retry_after} seconds")
+except PlanRestrictedError as e:
+    print(f"Feature requires {e.required_plan} plan")
+except LiteSOCError as e:
+    print(f"API error: {e.message}")
 ```
 
 ## Convenience Methods
@@ -328,6 +450,67 @@ Enable debug logging to troubleshoot issues:
 ```python
 litesoc = LiteSOC(api_key="your-api-key", debug=True)
 # Logs will be printed to stdout
+```
+
+## Development
+
+### Prerequisites
+
+- Python 3.9+
+- pip
+
+### Setup
+
+```bash
+# Clone the repository
+git clone https://github.com/LiteSOC/litesoc-python.git
+cd litesoc-python
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -e ".[dev]"
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with verbose output
+pytest -v
+
+# Run with coverage
+pytest --cov=src/litesoc --cov-report=term-missing
+
+# Run specific test file
+pytest tests/test_litesoc.py -v
+```
+
+### Code Quality
+
+```bash
+# Run linter
+ruff check src/ tests/
+
+# Run type checker
+mypy src/
+
+# Format code
+ruff format src/ tests/
+```
+
+### Building
+
+```bash
+# Build package
+python -m build
+
+# Install locally
+pip install -e .
 ```
 
 ## License

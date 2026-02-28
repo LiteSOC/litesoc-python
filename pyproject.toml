@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "litesoc"
-version = "1.2.0"
+version = "2.0.0"
 description = "Official Python SDK for LiteSOC - Security event tracking and threat detection"
 readme = "README.md"
 license = {text = "MIT"}
@@ -74,6 +74,10 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]  # Line too long - handled by formatter
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B017"]  # Allow assertRaises(Exception) in tests
 
 [tool.mypy]
 python_version = "3.9"

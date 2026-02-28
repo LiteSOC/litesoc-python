@@ -11,6 +11,142 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Literal, Optional, Union
 
+# =============================================================================
+# SECURITY EVENTS - 26 Standard Events for Security Intelligence
+# =============================================================================
+
+
+class SecurityEvents(str, Enum):
+    """
+    26 Standard Security Events optimized for Security Intelligence.
+    
+    These events are automatically enriched with GeoIP, VPN/Tor/Proxy
+    detection, and threat scoring when user_ip is provided.
+    
+    Example:
+        ```python
+        from litesoc import LiteSOC, SecurityEvents
+        
+        litesoc = LiteSOC(api_key="your-api-key")
+        litesoc.track(SecurityEvents.AUTH_LOGIN_FAILED, actor_id="user_123")
+        ```
+    """
+    # Authentication events (8 events)
+    AUTH_LOGIN_SUCCESS = "auth.login_success"
+    AUTH_LOGIN_FAILED = "auth.login_failed"
+    AUTH_LOGOUT = "auth.logout"
+    AUTH_PASSWORD_RESET = "auth.password_reset"
+    AUTH_MFA_ENABLED = "auth.mfa_enabled"
+    AUTH_MFA_DISABLED = "auth.mfa_disabled"
+    AUTH_SESSION_EXPIRED = "auth.session_expired"
+    AUTH_TOKEN_REFRESHED = "auth.token_refreshed"
+    
+    # Authorization events (4 events)
+    AUTHZ_ROLE_CHANGED = "authz.role_changed"
+    AUTHZ_PERMISSION_GRANTED = "authz.permission_granted"
+    AUTHZ_PERMISSION_REVOKED = "authz.permission_revoked"
+    AUTHZ_ACCESS_DENIED = "authz.access_denied"
+    
+    # Admin events (7 events)
+    ADMIN_PRIVILEGE_ESCALATION = "admin.privilege_escalation"
+    ADMIN_USER_IMPERSONATION = "admin.user_impersonation"
+    ADMIN_SETTINGS_CHANGED = "admin.settings_changed"
+    ADMIN_API_KEY_CREATED = "admin.api_key_created"
+    ADMIN_API_KEY_REVOKED = "admin.api_key_revoked"
+    ADMIN_USER_SUSPENDED = "admin.user_suspended"
+    ADMIN_USER_DELETED = "admin.user_deleted"
+    
+    # Data events (3 events)
+    DATA_BULK_DELETE = "data.bulk_delete"
+    DATA_SENSITIVE_ACCESS = "data.sensitive_access"
+    DATA_EXPORT = "data.export"
+    
+    # Security events (4 events)
+    SECURITY_SUSPICIOUS_ACTIVITY = "security.suspicious_activity"
+    SECURITY_RATE_LIMIT_EXCEEDED = "security.rate_limit_exceeded"
+    SECURITY_IP_BLOCKED = "security.ip_blocked"
+    SECURITY_BRUTE_FORCE_DETECTED = "security.brute_force_detected"
+
+
+# =============================================================================
+# CUSTOM EXCEPTIONS
+# =============================================================================
+
+
+class LiteSOCError(Exception):
+    """
+    Base exception for LiteSOC SDK errors.
+    
+    Attributes:
+        message: Human-readable error description
+        status_code: HTTP status code (if applicable)
+        error_code: LiteSOC error code (if applicable)
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        status_code: Optional[int] = None,
+        error_code: Optional[str] = None
+    ) -> None:
+        self.message = message
+        self.status_code = status_code
+        self.error_code = error_code
+        super().__init__(message)
+
+
+class LiteSOCAuthError(LiteSOCError):
+    """
+    Authentication/Authorization error (401/403).
+    
+    Raised when the API key is invalid, expired, or lacks
+    required permissions.
+    """
+    pass
+
+
+class RateLimitError(LiteSOCError):
+    """
+    Rate limit exceeded error (429).
+    
+    Raised when too many requests are made in a short period.
+    
+    Attributes:
+        retry_after: Seconds to wait before retrying (if provided)
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 429,
+        error_code: Optional[str] = None,
+        retry_after: Optional[int] = None
+    ) -> None:
+        super().__init__(message, status_code, error_code)
+        self.retry_after = retry_after
+
+
+class PlanRestrictedError(LiteSOCError):
+    """
+    Plan restriction error (403).
+    
+    Raised when trying to access features not available
+    on the current plan.
+    
+    Attributes:
+        required_plan: The plan required to access this feature
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        status_code: int = 403,
+        error_code: Optional[str] = None,
+        required_plan: Optional[str] = None
+    ) -> None:
+        super().__init__(message, status_code, error_code)
+        self.required_plan = required_plan
+
 
 # Event severity levels
 class EventSeverity(str, Enum):

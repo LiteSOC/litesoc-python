@@ -13,16 +13,23 @@ from litesoc.types import (
     Actor,
     EventSeverity,
     EventType,
+    LiteSOCAuthError,
     LiteSOCConfig,
+    LiteSOCError,
+    PlanRestrictedError,
     QueuedEvent,
+    RateLimitError,
 )
 
-__version__ = "1.0.1"
+__version__ = "2.0.0"
+
+# Default base URL for the API
+DEFAULT_BASE_URL = "https://api.litesoc.io"
 
 
 class LiteSOC:
     """
-    LiteSOC SDK for tracking security events.
+    LiteSOC SDK for tracking security events and managing alerts.
     
     Example:
         ```python
@@ -38,6 +45,9 @@ class LiteSOC:
             metadata={"reason": "invalid_password"}
         )
         
+        # Get alerts from the Management API
+        alerts = litesoc.get_alerts(status="open", severity="high")
+        
         # Flush remaining events before shutdown
         litesoc.flush()
         ```
@@ -47,7 +57,8 @@ class LiteSOC:
         self,
         api_key: str,
         *,
-        endpoint: str = "https://api.litesoc.io/collect",
+        base_url: str = DEFAULT_BASE_URL,
+        endpoint: Optional[str] = None,
         batching: bool = True,
         batch_size: int = 10,
         flush_interval: float = 5.0,
@@ -60,7 +71,8 @@ class LiteSOC:
         
         Args:
             api_key: Your LiteSOC API key (required)
-            endpoint: API endpoint URL
+            base_url: Base URL for the API (default: https://api.litesoc.io)
+            endpoint: Legacy endpoint URL (deprecated, use base_url instead)
             batching: Enable event batching (default: True)
             batch_size: Number of events before auto-flush (default: 10)
             flush_interval: Seconds between auto-flushes (default: 5.0)
@@ -74,9 +86,20 @@ class LiteSOC:
         if not api_key:
             raise ValueError("LiteSOC: api_key is required")
         
+        # Handle legacy endpoint parameter
+        if endpoint is not None:
+            # If endpoint is provided, extract base_url from it
+            # This maintains backward compatibility
+            if endpoint.endswith("/collect"):
+                base_url = endpoint[:-8]  # Remove /collect
+            else:
+                base_url = endpoint.rstrip("/")
+        
+        self._base_url = base_url.rstrip("/")
+        
         self._config = LiteSOCConfig(
             api_key=api_key,
-            endpoint=endpoint,
+            endpoint=f"{self._base_url}/collect",
             batching=batching,
             batch_size=batch_size,
             flush_interval=flush_interval,
@@ -95,13 +118,13 @@ class LiteSOC:
         self._session.headers.update({
             "Content-Type": "application/json",
             "Authorization": f"Bearer {api_key}",
-            "User-Agent": f"litesoc-python/{__version__}",
+            "User-Agent": f"litesoc-python-sdk/{__version__}",
         })
         
         # Register shutdown handler
         atexit.register(self.shutdown)
         
-        self._log("Initialized with endpoint:", endpoint)
+        self._log("Initialized with base URL:", self._base_url)
     
     def track(
         self,
@@ -277,7 +300,8 @@ class LiteSOC:
         self._log("Shutting down...")
         self.flush()
         
-        if self._flush_timer is not None:
+        # Defensive cleanup - timer is normally cancelled by flush()
+        if self._flush_timer is not None:  # pragma: no cover
             self._flush_timer.cancel()
             self._flush_timer = None
         
@@ -416,9 +440,310 @@ class LiteSOC:
         )
     
     # ============================================
+    # MANAGEMENT API METHODS
+    # ============================================
+    
+    def get_alerts(
+        self,
+        *,
+        status: Optional[str] = None,
+        severity: Optional[str] = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """
+        Get alerts from the Management API.
+        
+        Args:
+            status: Filter by status ('open', 'resolved', 'safe')
+            severity: Filter by severity ('low', 'medium', 'high', 'critical')
+            limit: Maximum number of alerts to return (default: 100)
+        
+        Returns:
+            Dictionary containing alerts data
+        
+        Raises:
+            LiteSOCAuthError: If authentication fails
+            RateLimitError: If rate limit is exceeded
+            PlanRestrictedError: If feature is not available on current plan
+            LiteSOCError: For other API errors
+        
+        Example:
+            ```python
+            alerts = litesoc.get_alerts(status="open", severity="high")
+            for alert in alerts.get("alerts", []):
+                print(f"Alert: {alert['id']} - {alert['type']}")
+            ```
+        """
+        params: dict[str, Any] = {"limit": limit}
+        if status is not None:
+            params["status"] = status
+        if severity is not None:
+            params["severity"] = severity
+        
+        return self._api_request("GET", "/alerts", params=params)
+    
+    def get_alert(self, alert_id: str) -> dict[str, Any]:
+        """
+        Get a single alert by ID.
+        
+        Args:
+            alert_id: The alert ID
+        
+        Returns:
+            Dictionary containing alert data
+        
+        Raises:
+            LiteSOCAuthError: If authentication fails
+            RateLimitError: If rate limit is exceeded
+            LiteSOCError: For other API errors
+        
+        Example:
+            ```python
+            alert = litesoc.get_alert("alert_abc123")
+            print(f"Alert type: {alert['type']}")
+            ```
+        """
+        return self._api_request("GET", f"/alerts/{alert_id}")
+    
+    def resolve_alert(
+        self,
+        alert_id: str,
+        resolution_type: str,
+        *,
+        notes: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        Resolve an alert.
+        
+        Args:
+            alert_id: The alert ID
+            resolution_type: Resolution type ('fixed', 'false_positive', 'ignored')
+            notes: Optional resolution notes
+        
+        Returns:
+            Dictionary containing updated alert data
+        
+        Raises:
+            LiteSOCAuthError: If authentication fails
+            RateLimitError: If rate limit is exceeded
+            LiteSOCError: For other API errors
+        
+        Example:
+            ```python
+            litesoc.resolve_alert(
+                "alert_abc123",
+                "fixed",
+                notes="Issue was addressed in PR #123"
+            )
+            ```
+        """
+        body: dict[str, Any] = {
+            "status": "resolved",
+            "resolution_type": resolution_type,
+        }
+        if notes is not None:
+            body["notes"] = notes
+        
+        return self._api_request("PATCH", f"/alerts/{alert_id}", json=body)
+    
+    def mark_alert_safe(
+        self,
+        alert_id: str,
+        *,
+        notes: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """
+        Mark an alert as safe/false positive.
+        
+        Args:
+            alert_id: The alert ID
+            notes: Optional notes explaining why this is safe
+        
+        Returns:
+            Dictionary containing updated alert data
+        
+        Raises:
+            LiteSOCAuthError: If authentication fails
+            RateLimitError: If rate limit is exceeded
+            LiteSOCError: For other API errors
+        
+        Example:
+            ```python
+            litesoc.mark_alert_safe(
+                "alert_abc123",
+                notes="This is expected behavior from the test suite"
+            )
+            ```
+        """
+        body: dict[str, Any] = {"status": "safe"}
+        if notes is not None:
+            body["notes"] = notes
+        
+        return self._api_request("PATCH", f"/alerts/{alert_id}", json=body)
+    
+    def get_events(
+        self,
+        *,
+        limit: int = 20,
+    ) -> dict[str, Any]:
+        """
+        Get events from the Management API.
+        
+        Args:
+            limit: Maximum number of events to return (default: 20)
+        
+        Returns:
+            Dictionary containing events data
+        
+        Raises:
+            LiteSOCAuthError: If authentication fails
+            RateLimitError: If rate limit is exceeded
+            PlanRestrictedError: If feature is not available on current plan
+            LiteSOCError: For other API errors
+        
+        Example:
+            ```python
+            events = litesoc.get_events(limit=50)
+            for event in events.get("events", []):
+                print(f"Event: {event['type']} - {event['timestamp']}")
+            ```
+        """
+        return self._api_request("GET", "/events", params={"limit": limit})
+    
+    def get_event(self, event_id: str) -> dict[str, Any]:
+        """
+        Get a single event by ID.
+        
+        Args:
+            event_id: The event ID
+        
+        Returns:
+            Dictionary containing event data
+        
+        Raises:
+            LiteSOCAuthError: If authentication fails
+            RateLimitError: If rate limit is exceeded
+            LiteSOCError: For other API errors
+        
+        Example:
+            ```python
+            event = litesoc.get_event("event_abc123")
+            print(f"Event type: {event['type']}")
+            ```
+        """
+        return self._api_request("GET", f"/events/{event_id}")
+    
+    # ============================================
     # PRIVATE METHODS
     # ============================================
     
+    def _api_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: Optional[dict[str, Any]] = None,
+        json: Optional[dict[str, Any]] = None,
+    ) -> dict[str, Any]:
+        """
+        Make a request to the Management API.
+        
+        Args:
+            method: HTTP method
+            path: API path (e.g., '/alerts')
+            params: Query parameters
+            json: Request body
+        
+        Returns:
+            Dictionary containing API response
+        
+        Raises:
+            LiteSOCAuthError: If authentication fails (401/403)
+            RateLimitError: If rate limit is exceeded (429)
+            PlanRestrictedError: If plan restriction applies
+            LiteSOCError: For other API errors
+        """
+        url = f"{self._base_url}{path}"
+        
+        try:
+            response = self._session.request(
+                method,
+                url,
+                params=params,
+                json=json,
+                timeout=self._config.timeout,
+            )
+            
+            # Handle errors
+            if not response.ok:
+                self._handle_api_error(response)
+            
+            return response.json()  # type: ignore[no-any-return]
+        
+        except (LiteSOCError, LiteSOCAuthError, RateLimitError, PlanRestrictedError):
+            raise
+        except requests.exceptions.Timeout as e:
+            raise LiteSOCError("Request timed out", status_code=408) from e
+        except requests.exceptions.RequestException as e:
+            raise LiteSOCError(f"Request failed: {e}") from e
+    
+    def _handle_api_error(self, response: requests.Response) -> None:
+        """Handle API error responses."""
+        try:
+            data = response.json()
+            message = data.get("error", data.get("message", "Unknown error"))
+            error_code = data.get("code")
+        except Exception:
+            message = response.text or f"HTTP {response.status_code}"
+            error_code = None
+        
+        status_code = response.status_code
+        
+        if status_code == 401:
+            raise LiteSOCAuthError(
+                message,
+                status_code=status_code,
+                error_code=error_code,
+            )
+        
+        if status_code == 403:
+            # Check if it's a plan restriction
+            try:
+                data = response.json()
+                if data.get("code") == "PLAN_RESTRICTED":
+                    raise PlanRestrictedError(
+                        message,
+                        status_code=status_code,
+                        error_code=error_code,
+                        required_plan=data.get("required_plan"),
+                    )
+            except (PlanRestrictedError, ValueError, KeyError):
+                if isinstance(
+                    response.json() if response.text else {},
+                    dict
+                ) and response.json().get("code") == "PLAN_RESTRICTED":
+                    raise
+            raise LiteSOCAuthError(
+                message,
+                status_code=status_code,
+                error_code=error_code,
+            )
+        
+        if status_code == 429:
+            retry_after = response.headers.get("Retry-After")
+            raise RateLimitError(
+                message,
+                status_code=status_code,
+                error_code=error_code,
+                retry_after=int(retry_after) if retry_after else None,
+            )
+        
+        raise LiteSOCError(
+            message,
+            status_code=status_code,
+            error_code=error_code,
+        )
+
     def _schedule_flush(self) -> None:
         """Schedule a flush after the flush interval."""
         if self._flush_timer is not None:
