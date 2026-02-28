@@ -20,6 +20,7 @@ from litesoc.types import (
     PlanRestrictedError,
     QueuedEvent,
     RateLimitError,
+    ResponseMetadata,
 )
 
 __version__ = "2.0.0"
@@ -120,6 +121,7 @@ class LiteSOC:
         self._flush_timer: Optional[threading.Timer] = None
         self._is_flushing = False
         self._session = requests.Session()
+        self._last_response_metadata: Optional[ResponseMetadata] = None
         
         # Set up session headers
         self._session.headers.update({
@@ -149,13 +151,27 @@ class LiteSOC:
         """
         Track a security event.
         
+        CRITICAL: Providing the real end-user IP address via `user_ip` is required
+        to enable LiteSOC's Behavioral AI features including:
+        - GeoIP enrichment and Maps visualization
+        - VPN/Tor/Proxy detection (Network Intelligence)
+        - Impossible travel detection
+        - Threat scoring and anomaly detection
+        
+        Without `user_ip`, events are still tracked but forensic intelligence
+        features will not be available.
+        
+        Note: The `severity` parameter is accepted for backward compatibility but
+        is ignored. LiteSOC assigns severity server-side based on event type
+        and contextual analysis.
+        
         Args:
             event_name: The event type (e.g., 'auth.login_failed')
             actor_id: User/actor ID (shorthand for actor)
             actor_email: Actor's email address
             actor: Actor object, ID string, or dict with 'id' and 'email'
-            user_ip: End-user's IP address
-            severity: Event severity level
+            user_ip: End-user's IP address (REQUIRED for Behavioral AI features)
+            severity: Deprecated - severity is assigned server-side
             metadata: Additional event metadata
             timestamp: Custom timestamp (defaults to now)
             timeout: Request timeout in seconds (overrides class default)
@@ -169,7 +185,7 @@ class LiteSOC:
             litesoc.track("auth.login_failed",
                 actor_id="user_123",
                 actor_email="user@example.com",
-                user_ip="192.168.1.1",
+                user_ip="192.168.1.1",  # Required for full intelligence
                 metadata={"reason": "invalid_password"}
             )
             
@@ -207,12 +223,9 @@ class LiteSOC:
             else:
                 ts = timestamp
             
-            # Normalize severity
-            severity_str: Optional[str] = None
-            if severity is not None:
-                severity_str = (
-                    severity.value if isinstance(severity, EventSeverity) else severity
-                )
+            # NOTE: Severity is NOT passed to the server - LiteSOC assigns severity
+            # server-side based on event type and contextual analysis. Any client-provided
+            # severity is intentionally stripped to ensure consistent threat classification.
             
             # Build metadata
             event_metadata: dict[str, Any] = {
@@ -220,8 +233,6 @@ class LiteSOC:
                 "_sdk": "litesoc-python",
                 "_sdk_version": __version__,
             }
-            if severity_str:
-                event_metadata["_severity"] = severity_str
             
             # Create queued event
             queued_event = QueuedEvent(
@@ -395,13 +406,16 @@ class LiteSOC:
         user_ip: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> None:
-        """Track a privilege escalation event (critical severity)."""
+        """
+        Track a privilege escalation event.
+        
+        Note: Severity is auto-assigned server-side for this high-risk event type.
+        """
         self.track(
             "admin.privilege_escalation",
             actor_id=actor_id,
             actor_email=actor_email,
             user_ip=user_ip,
-            severity=EventSeverity.CRITICAL,
             metadata=metadata,
         )
     
@@ -414,13 +428,16 @@ class LiteSOC:
         user_ip: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> None:
-        """Track a sensitive data access event (high severity)."""
+        """
+        Track a sensitive data access event.
+        
+        Note: Severity is auto-assigned server-side for this high-risk event type.
+        """
         self.track(
             "data.sensitive_access",
             actor_id=actor_id,
             actor_email=actor_email,
             user_ip=user_ip,
-            severity=EventSeverity.HIGH,
             metadata={"resource": resource, **(metadata or {})},
         )
     
@@ -433,13 +450,16 @@ class LiteSOC:
         user_ip: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> None:
-        """Track a bulk delete event (high severity)."""
+        """
+        Track a bulk delete event.
+        
+        Note: Severity is auto-assigned server-side for this high-risk event type.
+        """
         self.track(
             "data.bulk_delete",
             actor_id=actor_id,
             actor_email=actor_email,
             user_ip=user_ip,
-            severity=EventSeverity.HIGH,
             metadata={"records_deleted": record_count, **(metadata or {})},
         )
     
@@ -695,6 +715,52 @@ class LiteSOC:
         return self._api_request("GET", f"/events/{event_id}", timeout=timeout)
     
     # ============================================
+    # PLAN INFO METHODS
+    # ============================================
+    
+    def get_plan_info(self) -> Optional[ResponseMetadata]:
+        """
+        Get plan information from the last API response.
+        
+        Returns metadata parsed from response headers including:
+        - plan: Current plan name (e.g., "free", "pro", "enterprise")
+        - retention_days: Data retention period in days
+        - cutoff_date: Earliest accessible data timestamp (ISO 8601)
+        
+        Note: This returns data from the most recent Management API call.
+        Call get_alerts() or get_events() first to populate this data.
+        
+        Returns:
+            ResponseMetadata or None if no API calls made yet
+        
+        Example:
+            ```python
+            # Make an API call first
+            alerts = litesoc.get_alerts()
+            
+            # Then get plan info
+            plan_info = litesoc.get_plan_info()
+            if plan_info:
+                print(f"Plan: {plan_info.plan}")
+                print(f"Retention: {plan_info.retention_days} days")
+                print(f"Cutoff: {plan_info.cutoff_date}")
+            ```
+        """
+        return self._last_response_metadata
+    
+    def has_plan_info(self) -> bool:
+        """
+        Check if plan information is available.
+        
+        Returns:
+            True if plan info has been populated from an API response
+        """
+        return (
+            self._last_response_metadata is not None 
+            and self._last_response_metadata.has_plan_info()
+        )
+    
+    # ============================================
     # PRIVATE METHODS
     # ============================================
     
@@ -738,6 +804,11 @@ class LiteSOC:
                 timeout=request_timeout,
             )
             
+            # Parse plan/quota headers from response
+            self._last_response_metadata = ResponseMetadata.from_headers(
+                dict(response.headers)
+            )
+            
             # Handle errors
             if not response.ok:
                 self._handle_api_error(response)
@@ -775,8 +846,8 @@ class LiteSOC:
             try:
                 data = response.json()
                 if data.get("code") == "PLAN_RESTRICTED":
-                    required_plan = data.get("required_plan", "Business or Enterprise")
-                    hint = f" Upgrade to {required_plan} plan to access this feature."
+                    required_plan = data.get("required_plan", "Pro or Enterprise")
+                    hint = f" Upgrade to {required_plan} at {PlanRestrictedError.UPGRADE_URL}"
                     raise PlanRestrictedError(
                         message + hint,
                         status_code=status_code,

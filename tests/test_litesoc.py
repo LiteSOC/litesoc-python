@@ -16,6 +16,7 @@ from litesoc import (
     LiteSOCError,
     PlanRestrictedError,
     RateLimitError,
+    ResponseMetadata,
     SecurityEvents,
 )
 
@@ -1019,6 +1020,134 @@ class TestManagementAPIErrors(unittest.TestCase):
             self.sdk.get_alerts()
         
         self.assertIn("Request failed", ctx.exception.message)
+
+
+class TestResponseMetadata(unittest.TestCase):
+    """Test ResponseMetadata class"""
+    
+    def test_from_headers(self):
+        """Test parsing headers"""
+        headers = {
+            "X-LiteSOC-Plan": "pro",
+            "X-LiteSOC-Retention": "90",
+            "X-LiteSOC-Cutoff": "2024-01-01T00:00:00Z",
+        }
+        
+        metadata = ResponseMetadata.from_headers(headers)
+        
+        self.assertEqual(metadata.plan, "pro")
+        self.assertEqual(metadata.retention_days, 90)
+        self.assertEqual(metadata.cutoff_date, "2024-01-01T00:00:00Z")
+    
+    def test_from_headers_case_insensitive(self):
+        """Test case-insensitive header parsing"""
+        headers = {
+            "x-litesoc-plan": "enterprise",
+            "x-litesoc-retention": "365",
+            "x-litesoc-cutoff": "2023-06-01T00:00:00Z",
+        }
+        
+        metadata = ResponseMetadata.from_headers(headers)
+        
+        self.assertEqual(metadata.plan, "enterprise")
+        self.assertEqual(metadata.retention_days, 365)
+        self.assertEqual(metadata.cutoff_date, "2023-06-01T00:00:00Z")
+    
+    def test_from_empty_headers(self):
+        """Test parsing empty headers"""
+        metadata = ResponseMetadata.from_headers({})
+        
+        self.assertIsNone(metadata.plan)
+        self.assertIsNone(metadata.retention_days)
+        self.assertIsNone(metadata.cutoff_date)
+        self.assertFalse(metadata.has_plan_info())
+        self.assertFalse(metadata.has_retention_info())
+    
+    def test_has_plan_info(self):
+        """Test has_plan_info helper"""
+        metadata = ResponseMetadata(plan="pro")
+        self.assertTrue(metadata.has_plan_info())
+        
+        metadata2 = ResponseMetadata()
+        self.assertFalse(metadata2.has_plan_info())
+    
+    def test_has_retention_info(self):
+        """Test has_retention_info helper"""
+        metadata = ResponseMetadata(retention_days=90)
+        self.assertTrue(metadata.has_retention_info())
+        
+        metadata2 = ResponseMetadata()
+        self.assertFalse(metadata2.has_retention_info())
+    
+    def test_to_dict(self):
+        """Test to_dict method"""
+        metadata = ResponseMetadata(
+            plan="pro",
+            retention_days=90,
+            cutoff_date="2024-01-01T00:00:00Z"
+        )
+        
+        expected = {
+            "plan": "pro",
+            "retention_days": 90,
+            "cutoff_date": "2024-01-01T00:00:00Z",
+        }
+        
+        self.assertEqual(metadata.to_dict(), expected)
+
+
+class TestPlanInfo(unittest.TestCase):
+    """Test plan info methods"""
+    
+    def setUp(self):
+        self.sdk = LiteSOC(api_key="test-key")
+    
+    def tearDown(self):
+        self.sdk.shutdown()
+    
+    def test_get_plan_info_initially_none(self):
+        """Test that plan info is None before any API calls"""
+        self.assertIsNone(self.sdk.get_plan_info())
+        self.assertFalse(self.sdk.has_plan_info())
+    
+    @responses.activate
+    def test_get_plan_info_after_api_call(self):
+        """Test that plan info is populated after an API call"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/alerts",
+            json={"alerts": [], "total": 0},
+            status=200,
+            headers={
+                "X-LiteSOC-Plan": "pro",
+                "X-LiteSOC-Retention": "90",
+                "X-LiteSOC-Cutoff": "2024-01-01T00:00:00Z",
+            },
+        )
+        
+        self.sdk.get_alerts()
+        
+        plan_info = self.sdk.get_plan_info()
+        self.assertIsNotNone(plan_info)
+        self.assertEqual(plan_info.plan, "pro")
+        self.assertEqual(plan_info.retention_days, 90)
+        self.assertTrue(self.sdk.has_plan_info())
+
+
+class TestPlanRestrictedErrorUpgradeUrl(unittest.TestCase):
+    """Test PlanRestrictedError upgrade URL"""
+    
+    def test_upgrade_url_constant(self):
+        """Test that upgrade URL constant is set"""
+        self.assertEqual(
+            PlanRestrictedError.UPGRADE_URL,
+            "https://www.litesoc.io/pricing"
+        )
+    
+    def test_upgrade_url_attribute(self):
+        """Test that upgrade URL is set on instance"""
+        error = PlanRestrictedError("Test error")
+        self.assertEqual(error.upgrade_url, "https://www.litesoc.io/pricing")
 
 
 if __name__ == "__main__":

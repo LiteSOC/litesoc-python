@@ -135,7 +135,12 @@ class PlanRestrictedError(LiteSOCError):
     
     Attributes:
         required_plan: The plan required to access this feature
+        upgrade_url: URL to upgrade the plan
+    
+    Upgrade at: https://www.litesoc.io/pricing
     """
+    
+    UPGRADE_URL = "https://www.litesoc.io/pricing"
     
     def __init__(
         self,
@@ -146,6 +151,7 @@ class PlanRestrictedError(LiteSOCError):
     ) -> None:
         super().__init__(message, status_code, error_code)
         self.required_plan = required_plan
+        self.upgrade_url = self.UPGRADE_URL
 
 
 # Event severity levels
@@ -370,3 +376,70 @@ class LiteSOCConfig:
     debug: bool = False
     silent: bool = True
     timeout: float = 5.0  # seconds (optimized for non-blocking behavior)
+
+
+@dataclass
+class ResponseMetadata:
+    """
+    Plan and quota information from API response headers.
+    
+    Parsed from response headers:
+    - X-LiteSOC-Plan: Current plan name (e.g., "free", "pro", "enterprise")
+    - X-LiteSOC-Retention: Data retention period in days
+    - X-LiteSOC-Cutoff: Earliest accessible data timestamp (ISO 8601)
+    
+    Example:
+        ```python
+        events = litesoc.get_events()
+        plan_info = litesoc.get_plan_info()
+        if plan_info:
+            print(f"Plan: {plan_info.plan}")
+            print(f"Retention: {plan_info.retention_days} days")
+        ```
+    """
+    
+    plan: Optional[str] = None
+    retention_days: Optional[int] = None
+    cutoff_date: Optional[str] = None
+    
+    @classmethod
+    def from_headers(cls, headers: dict[str, str]) -> "ResponseMetadata":
+        """
+        Create ResponseMetadata from HTTP response headers.
+        
+        Args:
+            headers: Response headers dictionary
+        
+        Returns:
+            ResponseMetadata instance with parsed values
+        """
+        # Normalize header names to lowercase for case-insensitive access
+        normalized = {k.lower(): v for k, v in headers.items()}
+        
+        plan = normalized.get("x-litesoc-plan")
+        retention_str = normalized.get("x-litesoc-retention")
+        cutoff = normalized.get("x-litesoc-cutoff")
+        
+        retention_days = int(retention_str) if retention_str else None
+        
+        return cls(
+            plan=plan,
+            retention_days=retention_days,
+            cutoff_date=cutoff,
+        )
+    
+    def has_plan_info(self) -> bool:
+        """Check if plan information is available."""
+        return self.plan is not None
+    
+    def has_retention_info(self) -> bool:
+        """Check if retention information is available."""
+        return self.retention_days is not None
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "plan": self.plan,
+            "retention_days": self.retention_days,
+            "cutoff_date": self.cutoff_date,
+        }

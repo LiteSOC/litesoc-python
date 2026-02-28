@@ -40,6 +40,7 @@ from litesoc.types import (
     PlanRestrictedError,
     QueuedEvent,
     RateLimitError,
+    ResponseMetadata,
     SecurityEvent,
     SecurityEvents,
     TrackOptions,
@@ -62,6 +63,7 @@ __all__ = [
     "EventSeverity",
     "LiteSOCConfig",
     "QueuedEvent",
+    "ResponseMetadata",
     # 26 Standard Events Enum
     "SecurityEvents",
     # Event type literals (backward compatibility)
