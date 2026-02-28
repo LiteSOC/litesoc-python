@@ -1345,7 +1345,7 @@ class TestForensics(unittest.TestCase):
     
     def test_to_dict(self):
         """Test Forensics to_dict method"""
-        from litesoc import Forensics, NetworkForensics, LocationForensics
+        from litesoc import Forensics, LocationForensics, NetworkForensics
         
         forensics = Forensics(
             network=NetworkForensics(
@@ -1473,7 +1473,7 @@ class TestAlert(unittest.TestCase):
     
     def test_to_dict(self):
         """Test Alert to_dict method"""
-        from litesoc import Alert, Forensics, NetworkForensics, LocationForensics
+        from litesoc import Alert, Forensics, LocationForensics, NetworkForensics
         
         alert = Alert(
             id="alert_test",
