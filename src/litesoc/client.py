@@ -23,7 +23,7 @@ from litesoc.types import (
     ResponseMetadata,
 )
 
-__version__ = "2.1.0"
+__version__ = "2.2.0"
 
 # Default base URL for the API
 DEFAULT_BASE_URL = "https://api.litesoc.io"
@@ -509,16 +509,22 @@ class LiteSOC:
         *,
         status: Optional[str] = None,
         severity: Optional[str] = None,
+        alert_type: Optional[str] = None,
         limit: int = 100,
+        offset: int = 0,
         timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         """
         Get alerts from the Management API.
         
         Args:
-            status: Filter by status ('open', 'resolved', 'safe')
+            status: Filter by status ('open', 'acknowledged', 'resolved', 'dismissed')
             severity: Filter by severity ('low', 'medium', 'high', 'critical')
-            limit: Maximum number of alerts to return (default: 100)
+            alert_type: Filter by alert type ('impossible_travel', 'brute_force_attack',
+                       'geo_anomaly', 'new_device', 'privilege_escalation', 
+                       'data_exfiltration', 'suspicious_activity', 'rate_limit_exceeded')
+            limit: Maximum number of alerts to return (default: 100, max: 500)
+            offset: Number of alerts to skip for pagination (default: 0)
             timeout: Request timeout in seconds (overrides class default)
         
         Returns:
@@ -532,9 +538,13 @@ class LiteSOC:
         
         Example:
             ```python
-            alerts = litesoc.get_alerts(status="open", severity="high")
-            for alert in alerts.get("alerts", []):
-                print(f"Alert: {alert['id']} - {alert['type']}")
+            alerts = litesoc.get_alerts(
+                status="open",
+                severity="critical",
+                alert_type="brute_force_attack"
+            )
+            for alert in alerts.get("data", []):
+                print(f"Alert: {alert['id']} - {alert['alert_type']}")
             ```
         """
         params: dict[str, Any] = {"limit": limit}
@@ -542,6 +552,10 @@ class LiteSOC:
             params["status"] = status
         if severity is not None:
             params["severity"] = severity
+        if alert_type is not None:
+            params["alert_type"] = alert_type
+        if offset > 0:
+            params["offset"] = offset
         
         return self._api_request("GET", "/alerts", params=params, timeout=timeout)
     
@@ -587,7 +601,8 @@ class LiteSOC:
         
         Args:
             alert_id: The alert ID
-            resolution_type: Resolution type ('fixed', 'false_positive', 'ignored')
+            resolution_type: Resolution type ('blocked_ip', 'reset_password', 
+                           'contacted_user', 'false_positive', 'other')
             notes: Optional resolution notes
             timeout: Request timeout in seconds (overrides class default)
         
@@ -603,17 +618,17 @@ class LiteSOC:
             ```python
             litesoc.resolve_alert(
                 "alert_abc123",
-                "fixed",
-                notes="Issue was addressed in PR #123"
+                "blocked_ip",
+                notes="IP has been blocked in firewall"
             )
             ```
         """
         body: dict[str, Any] = {
-            "status": "resolved",
+            "action": "resolve",
             "resolution_type": resolution_type,
         }
         if notes is not None:
-            body["notes"] = notes
+            body["internal_notes"] = notes
         
         return self._api_request("PATCH", f"/alerts/{alert_id}", json=body, timeout=timeout)
     
@@ -648,23 +663,31 @@ class LiteSOC:
             )
             ```
         """
-        body: dict[str, Any] = {"status": "safe"}
+        body: dict[str, Any] = {"action": "mark_safe"}
         if notes is not None:
-            body["notes"] = notes
+            body["internal_notes"] = notes
         
         return self._api_request("PATCH", f"/alerts/{alert_id}", json=body, timeout=timeout)
     
     def get_events(
         self,
         *,
-        limit: int = 20,
+        event_name: Optional[str] = None,
+        actor_id: Optional[str] = None,
+        severity: Optional[str] = None,
+        limit: int = 50,
+        offset: int = 0,
         timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         """
         Get events from the Management API.
         
         Args:
-            limit: Maximum number of events to return (default: 20)
+            event_name: Filter by event name (e.g., 'auth.login_failed')
+            actor_id: Filter by actor ID
+            severity: Filter by severity ('critical', 'warning', 'info')
+            limit: Maximum number of events to return (default: 50, max: 100)
+            offset: Number of events to skip for pagination (default: 0)
             timeout: Request timeout in seconds (overrides class default)
         
         Returns:
@@ -678,12 +701,26 @@ class LiteSOC:
         
         Example:
             ```python
-            events = litesoc.get_events(limit=50)
-            for event in events.get("events", []):
-                print(f"Event: {event['type']} - {event['timestamp']}")
+            events = litesoc.get_events(
+                event_name="auth.login_failed",
+                severity="critical",
+                limit=50
+            )
+            for event in events.get("data", []):
+                print(f"Event: {event['event_name']} - {event['created_at']}")
             ```
         """
-        return self._api_request("GET", "/events", params={"limit": limit}, timeout=timeout)
+        params: dict[str, Any] = {"limit": limit}
+        if event_name is not None:
+            params["event_name"] = event_name
+        if actor_id is not None:
+            params["actor_id"] = actor_id
+        if severity is not None:
+            params["severity"] = severity
+        if offset > 0:
+            params["offset"] = offset
+        
+        return self._api_request("GET", "/events", params=params, timeout=timeout)
     
     def get_event(
         self,

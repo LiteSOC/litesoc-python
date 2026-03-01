@@ -5,6 +5,27 @@ All notable changes to the LiteSOC Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-03-02
+
+### Changed
+
+#### Management API Enhancements
+- **`get_events()`** - Added new optional parameters to match API spec:
+  - `event_name` - Filter by event name
+  - `actor_id` - Filter by actor ID
+  - `severity` - Filter by severity level
+  - `offset` - Pagination offset
+- **`get_alerts()`** - Added new optional parameters to match API spec:
+  - `alert_type` - Filter by alert type
+  - `offset` - Pagination offset
+- **`resolve_alert()`** - API body now sends `{ action: 'resolve', resolution_type, internal_notes }` to match API spec
+- **`mark_alert_safe()`** - API body now sends `{ action: 'mark_safe', internal_notes }` to match API spec
+
+### Fixed
+- Aligned SDK methods with API codebase requirements for all Management API endpoints
+- Updated test suite (106 tests, 99% coverage)
+- Fixed docstring parameter name from `event` to `event_name` in `get_events()`
+
 ## [2.1.0] - 2026-03-01
 
 ### Added
