@@ -712,7 +712,7 @@ class TestLiteSOCUserAgent(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key")
         user_agent = sdk._session.headers.get("User-Agent")
         self.assertTrue(user_agent.startswith("litesoc-python-sdk/"))
-        self.assertIn("2.1.0", user_agent)
+        self.assertIn("2.2.0", user_agent)
         sdk.shutdown()
 
     def test_api_key_header(self):
@@ -759,6 +759,25 @@ class TestManagementAPI(unittest.TestCase):
         )
         
         result = self.sdk.get_alerts(status="open", severity="high", limit=50)
+        self.assertIn("alerts", result)
+
+    @responses.activate
+    def test_get_alerts_with_all_filters(self):
+        """Test get_alerts with all filters including alert_type and offset"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/alerts",
+            json={"alerts": []},
+            status=200,
+        )
+        
+        result = self.sdk.get_alerts(
+            status="open", 
+            severity="critical", 
+            alert_type="impossible_travel",
+            limit=25,
+            offset=10
+        )
         self.assertIn("alerts", result)
 
     @responses.activate
@@ -851,6 +870,25 @@ class TestManagementAPI(unittest.TestCase):
         )
         
         result = self.sdk.get_events(limit=50)
+        self.assertIn("events", result)
+
+    @responses.activate
+    def test_get_events_with_all_filters(self):
+        """Test get_events with all filters including event_name, actor_id, severity, offset"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/events",
+            json={"events": []},
+            status=200,
+        )
+        
+        result = self.sdk.get_events(
+            limit=25,
+            event_name="auth.login_failed",
+            actor_id="user_123",
+            severity="critical",
+            offset=10
+        )
         self.assertIn("events", result)
 
     @responses.activate
