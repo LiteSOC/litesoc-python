@@ -39,8 +39,9 @@ litesoc.flush()
 
 ## Features
 
+- ✅ **Event Ingestion API** - Track security events via `/api/v1/collect`
+- ✅ **Management API** - Query events and alerts via `/api/v1/events` and `/api/v1/alerts`
 - ✅ **26 standard security event types** - Authentication, authorization, admin, data, and security events
-- ✅ **Management API** - Get alerts, resolve alerts, fetch events
 - ✅ **Automatic batching** - Events are batched for efficient delivery
 - ✅ **Retry logic** - Failed events are automatically retried
 - ✅ **Type hints** - Full type annotations for IDE support
@@ -50,6 +51,16 @@ litesoc.flush()
 - 🗺️ **GeoIP Enrichment** - Automatic location data from IP addresses
 - 🛡️ **Network Intelligence** - VPN, Tor, Proxy & Datacenter detection
 - 📊 **Threat Scoring** - Auto-assigned severity (Low → Critical)
+
+## API Endpoints
+
+The SDK provides access to three LiteSOC API endpoints:
+
+| Endpoint | SDK Methods | Description |
+|----------|-------------|-------------|
+| `POST /api/v1/collect` | `track()`, `flush()` | Ingest security events |
+| `GET /api/v1/events` | `get_events()`, `get_event()` | Query events (all plans) |
+| `GET/PATCH /api/v1/alerts` | `get_alerts()`, `get_alert()`, `resolve_alert()`, `mark_alert_safe()` | Manage alerts (Pro/Enterprise) |
 
 ## Security Intelligence (Automatic Enrichment)
 
@@ -93,6 +104,10 @@ litesoc = LiteSOC(
 ```
 
 ## Tracking Events
+
+### Event Ingestion API (`/api/v1/collect`)
+
+The `track()` method sends security events to LiteSOC for analysis and alerting.
 
 ### Basic Usage
 
@@ -147,67 +162,132 @@ litesoc.track("data.export",
 
 The SDK provides methods to interact with the LiteSOC Management API:
 
-### Get Alerts
+### Events API (`/api/v1/events`)
+
+Available to **all plans**. Free tier users have some forensic fields redacted.
+
+#### Get Events
 
 ```python
-from litesoc import LiteSOC, LiteSOCAuthError, RateLimitError
+from litesoc import LiteSOC
 
 litesoc = LiteSOC(api_key="your-api-key")
 
-# Get all open alerts
-alerts = litesoc.get_alerts(status="open")
+# Get recent events
+events = litesoc.get_events()
 
-# Get high severity alerts
-alerts = litesoc.get_alerts(severity="high", limit=50)
+# Filter by event name
+events = litesoc.get_events(event_name="auth.login_failed")
 
-for alert in alerts.get("alerts", []):
-    print(f"Alert: {alert['id']} - {alert['type']}")
+# Filter by actor
+events = litesoc.get_events(actor_id="user_123")
+
+# Filter by severity
+events = litesoc.get_events(severity="critical")  # critical, warning, info
+
+# Pagination
+events = litesoc.get_events(limit=50, offset=100)
+
+# Access the data
+for event in events.get("data", []):
+    print(f"Event: {event['event_name']} - {event['created_at']}")
+    print(f"  Actor: {event.get('actor_id')}")
+    print(f"  IP: {event.get('user_ip')}")
 ```
 
-### Get Single Alert
+#### Get Single Event
 
 ```python
-alert = litesoc.get_alert("alert_abc123")
-print(f"Alert type: {alert['type']}")
+event = litesoc.get_event("event-uuid-here")
+print(f"Event: {event['data']['event_name']}")
 ```
 
-### Resolve Alert
+### Alerts API (`/api/v1/alerts`)
+
+Available to **Pro and Enterprise** plans only.
+
+#### Get Alerts
 
 ```python
-# Resolve with notes
+from litesoc import LiteSOC, PlanRestrictedError
+
+litesoc = LiteSOC(api_key="your-api-key")
+
+try:
+    # Get all open alerts
+    alerts = litesoc.get_alerts(status="open")
+
+    # Filter by severity
+    alerts = litesoc.get_alerts(severity="critical")  # critical, high, medium, low
+
+    # Filter by alert type
+    alerts = litesoc.get_alerts(alert_type="brute_force_attack")
+    # Types: impossible_travel, brute_force_attack, geo_anomaly, new_device,
+    #        privilege_escalation, data_exfiltration, suspicious_activity, rate_limit_exceeded
+
+    # Pagination
+    alerts = litesoc.get_alerts(limit=100, offset=0)
+
+    # Access the data
+    for alert in alerts.get("data", []):
+        print(f"Alert: {alert['id']} - {alert['alert_type']}")
+        print(f"  Severity: {alert['severity']}")
+        print(f"  Status: {alert['status']}")
+
+except PlanRestrictedError as e:
+    print(f"Alerts API requires {e.required_plan} plan")
+```
+
+#### Get Single Alert
+
+```python
+alert = litesoc.get_alert("alert-uuid-here")
+print(f"Alert type: {alert['data']['alert_type']}")
+```
+
+#### Resolve Alert
+
+```python
+# Resolve with resolution type (required)
 litesoc.resolve_alert(
-    "alert_abc123",
-    "fixed",
-    notes="Issue was addressed in PR #123"
+    "alert-uuid-here",
+    resolution_type="blocked_ip",  # blocked_ip, reset_password, contacted_user, false_positive, other
+    notes="IP has been blocked in firewall",
+    resolved_by="security-team"  # Optional: who/what resolved it
 )
 
 # Mark as false positive
-litesoc.resolve_alert("alert_abc123", "false_positive")
-```
-
-### Mark Alert Safe
-
-```python
-litesoc.mark_alert_safe(
-    "alert_abc123",
-    notes="This is expected behavior from the test suite"
+litesoc.resolve_alert(
+    "alert-uuid-here",
+    resolution_type="false_positive",
+    notes="This was a test from the QA team"
 )
 ```
 
-### Get Events
+#### Mark Alert Safe
 
 ```python
-events = litesoc.get_events(limit=50)
-
-for event in events.get("events", []):
-    print(f"Event: {event['type']} - {event['timestamp']}")
+litesoc.mark_alert_safe(
+    "alert-uuid-here",
+    notes="This is expected behavior from the CI/CD pipeline",
+    resolved_by="automation"  # Optional: who/what marked it safe
+)
 ```
 
-### Get Single Event
+### Plan Info
+
+Get plan information from the last API response:
 
 ```python
-event = litesoc.get_event("event_abc123")
-print(f"Event type: {event['type']}")
+# Make an API call first
+alerts = litesoc.get_alerts()
+
+# Get plan info from response headers
+plan_info = litesoc.get_plan_info()
+if plan_info:
+    print(f"Plan: {plan_info.plan}")
+    print(f"Retention: {plan_info.retention_days} days")
+    print(f"Cutoff: {plan_info.cutoff_date}")
 ```
 
 ## SecurityEvents Enum

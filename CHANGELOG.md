@@ -5,6 +5,19 @@ All notable changes to the LiteSOC Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - 2026-03-02
+
+### Added
+- **`resolved_by` parameter** - Added optional `resolved_by` parameter to `resolve_alert()` and `mark_alert_safe()` methods to specify who/what resolved the alert (e.g., 'security-automation', 'qa-team')
+
+### Changed
+- **Timeout handling** - `_send_events()` now properly re-raises `Timeout` exceptions so callers (`track()`, `flush()`) can handle them specifically
+- **Test coverage** - Achieved 100% test coverage (112 tests)
+
+### Fixed
+- Fixed timeout exception handling in event sending to ensure timeout-specific handlers in `track()` and `flush()` are properly triggered
+- Added tests for API error responses (`{"error": "..."}`) and unexpected response formats
+
 ## [2.2.0] - 2026-03-02
 
 ### Changed

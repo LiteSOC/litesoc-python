@@ -350,17 +350,19 @@ class QueuedEvent:
     actor: Optional[dict[str, Optional[str]]]
     user_ip: Optional[str]
     metadata: dict[str, Any]
-    timestamp: str
     retry_count: int = 0
     
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for API payload"""
+        """Convert to dictionary for API payload.
+        
+        Note: timestamp is not sent to the API as the server
+        generates its own timestamp for consistency.
+        """
         return {
             "event": self.event,
             "actor": self.actor,
             "user_ip": self.user_ip,
             "metadata": self.metadata,
-            "timestamp": self.timestamp,
         }
 
 

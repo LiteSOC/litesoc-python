@@ -5,7 +5,7 @@ LiteSOC Python SDK Client
 import atexit
 import logging
 import threading
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Optional, Union
 
 import requests
@@ -23,7 +23,7 @@ from litesoc.types import (
     ResponseMetadata,
 )
 
-__version__ = "2.2.0"
+__version__ = "2.3.0"
 
 # Default base URL for the API
 DEFAULT_BASE_URL = "https://api.litesoc.io"
@@ -161,9 +161,9 @@ class LiteSOC:
         Without `user_ip`, events are still tracked but forensic intelligence
         features will not be available.
         
-        Note: The `severity` parameter is accepted for backward compatibility but
-        is ignored. LiteSOC assigns severity server-side based on event type
-        and contextual analysis.
+        Note: The `severity` and `timestamp` parameters are accepted for backward 
+        compatibility but are ignored. LiteSOC assigns severity and timestamps 
+        server-side for consistency.
         
         Args:
             event_name: The event type (e.g., 'auth.login_failed')
@@ -173,7 +173,7 @@ class LiteSOC:
             user_ip: End-user's IP address (REQUIRED for Behavioral AI features)
             severity: Deprecated - severity is assigned server-side
             metadata: Additional event metadata
-            timestamp: Custom timestamp (defaults to now)
+            timestamp: Deprecated - timestamp is assigned server-side
             timeout: Request timeout in seconds (overrides class default)
         
         Returns:
@@ -215,13 +215,9 @@ class LiteSOC:
             elif actor_email is not None:
                 actor_dict = {"id": actor_email, "email": actor_email}
             
-            # Normalize timestamp
-            if timestamp is None:
-                ts = datetime.now(timezone.utc).isoformat()
-            elif isinstance(timestamp, datetime):
-                ts = timestamp.isoformat()
-            else:
-                ts = timestamp
+            # NOTE: Timestamp is NOT sent to the server - LiteSOC generates
+            # timestamps server-side for consistency. Client-provided timestamps
+            # were previously accepted but ignored by the API.
             
             # NOTE: Severity is NOT passed to the server - LiteSOC assigns severity
             # server-side based on event type and contextual analysis. Any client-provided
@@ -240,7 +236,6 @@ class LiteSOC:
                 actor=actor_dict,
                 user_ip=user_ip,
                 metadata=event_metadata,
-                timestamp=ts,
             )
             
             self._log("Tracking event:", event_name, queued_event)
@@ -594,6 +589,7 @@ class LiteSOC:
         resolution_type: str,
         *,
         notes: Optional[str] = None,
+        resolved_by: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         """
@@ -604,6 +600,8 @@ class LiteSOC:
             resolution_type: Resolution type ('blocked_ip', 'reset_password', 
                            'contacted_user', 'false_positive', 'other')
             notes: Optional resolution notes
+            resolved_by: Optional identifier for who/what resolved the alert
+                        (e.g., 'security-team', 'automation-v1'). Defaults to 'n8n-api'.
             timeout: Request timeout in seconds (overrides class default)
         
         Returns:
@@ -619,7 +617,8 @@ class LiteSOC:
             litesoc.resolve_alert(
                 "alert_abc123",
                 "blocked_ip",
-                notes="IP has been blocked in firewall"
+                notes="IP has been blocked in firewall",
+                resolved_by="security-automation"
             )
             ```
         """
@@ -629,6 +628,8 @@ class LiteSOC:
         }
         if notes is not None:
             body["internal_notes"] = notes
+        if resolved_by is not None:
+            body["resolved_by"] = resolved_by
         
         return self._api_request("PATCH", f"/alerts/{alert_id}", json=body, timeout=timeout)
     
@@ -637,6 +638,7 @@ class LiteSOC:
         alert_id: str,
         *,
         notes: Optional[str] = None,
+        resolved_by: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> dict[str, Any]:
         """
@@ -645,6 +647,8 @@ class LiteSOC:
         Args:
             alert_id: The alert ID
             notes: Optional notes explaining why this is safe
+            resolved_by: Optional identifier for who/what marked the alert safe
+                        (e.g., 'security-team', 'automation-v1'). Defaults to 'n8n-api'.
             timeout: Request timeout in seconds (overrides class default)
         
         Returns:
@@ -659,13 +663,16 @@ class LiteSOC:
             ```python
             litesoc.mark_alert_safe(
                 "alert_abc123",
-                notes="This is expected behavior from the test suite"
+                notes="This is expected behavior from the test suite",
+                resolved_by="qa-automation"
             )
             ```
         """
         body: dict[str, Any] = {"action": "mark_safe"}
         if notes is not None:
             body["internal_notes"] = notes
+        if resolved_by is not None:
+            body["resolved_by"] = resolved_by
         
         return self._api_request("PATCH", f"/alerts/{alert_id}", json=body, timeout=timeout)
     
@@ -682,6 +689,9 @@ class LiteSOC:
         """
         Get events from the Management API.
         
+        Available to all plans. Free tier users will have some forensic
+        fields (network_intelligence, precise geolocation) redacted.
+        
         Args:
             event_name: Filter by event name (e.g., 'auth.login_failed')
             actor_id: Filter by actor ID
@@ -691,12 +701,11 @@ class LiteSOC:
             timeout: Request timeout in seconds (overrides class default)
         
         Returns:
-            Dictionary containing events data
+            Dictionary containing events data with pagination info
         
         Raises:
             LiteSOCAuthError: If authentication fails
             RateLimitError: If rate limit is exceeded
-            PlanRestrictedError: If feature is not available on current plan
             LiteSOCError: For other API errors
         
         Example:
@@ -937,52 +946,60 @@ class LiteSOC:
             self._handle_error("scheduled flush", e)  # pragma: no cover
     
     def _send_events(self, events: list[QueuedEvent], *, timeout: Optional[float] = None) -> None:
-        """Send events to the LiteSOC API."""
+        """Send events to the LiteSOC API.
+        
+        Note: The API only accepts single events, so this method sends
+        each event individually. Batching is handled client-side for
+        efficient queuing, but server requests are made one at a time.
+        """
         if not events:
             return
         
         request_timeout = timeout if timeout is not None else self._config.timeout
+        failed_events: list[QueuedEvent] = []
         
-        try:
-            # Single event or batch
-            is_batch = len(events) > 1
-            if is_batch:
-                payload = {"events": [e.to_dict() for e in events]}
-            else:
-                payload = events[0].to_dict()
+        for event in events:
+            try:
+                payload = event.to_dict()
+                
+                response = self._session.post(
+                    self._config.endpoint,
+                    json=payload,
+                    timeout=request_timeout,
+                )
+                
+                response.raise_for_status()
+                result = response.json()
+                
+                # API returns { status: "queued" } or { status: "inserted" }
+                if result.get("status") in ("queued", "inserted"):
+                    self._log(f"Successfully sent event: {event.event}")
+                elif result.get("error"):
+                    raise Exception(result.get("error"))
+                else:
+                    # Any 2xx response is considered success
+                    self._log(f"Successfully sent event: {event.event}")
             
-            response = self._session.post(
-                self._config.endpoint,
-                json=payload,
-                timeout=request_timeout,
-            )
-            
-            response.raise_for_status()
-            result = response.json()
-            
-            if result.get("success"):
-                batch_info = ""
-                if is_batch:
-                    batch_info = f"(batch, {result.get('events_accepted')} accepted)"
-                self._log(f"Successfully sent {len(events)} event(s)", batch_info)
-            else:
-                raise Exception(result.get("error", "Unknown API error"))
-        
-        except Exception:
-            # Re-queue events for retry (with limit)
-            retryable = [ev for ev in events if ev.retry_count < 3]
-            
-            if retryable and self._config.batching:
-                self._log(f"Re-queuing {len(retryable)} events for retry")
-                for event in retryable:
+            except requests.exceptions.Timeout:
+                # Re-raise timeout so callers can handle it specifically
+                raise
+            except Exception as e:
+                self._log(f"Failed to send event {event.event}: {e}")
+                # Track failed event for retry
+                if event.retry_count < 3:
                     event.retry_count += 1
-                
-                with self._queue_lock:
-                    self._queue = retryable + self._queue
-                
-                self._schedule_flush()
-            
-            raise
+                    failed_events.append(event)
+        
+        # Re-queue failed events for retry
+        if failed_events and self._config.batching:
+            self._log(f"Re-queuing {len(failed_events)} events for retry")
+            with self._queue_lock:
+                self._queue = failed_events + self._queue
+            self._schedule_flush()
+        
+        # If all events failed, raise to signal error
+        if len(failed_events) == len(events) and failed_events:
+            raise Exception(f"All {len(events)} events failed to send")
     
     def _handle_error(self, context: str, error: Exception) -> None:
         """Handle errors based on silent mode."""

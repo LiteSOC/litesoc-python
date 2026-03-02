@@ -144,8 +144,8 @@ class TestLiteSOCNoBatching(unittest.TestCase):
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
-            json={"success": True},
-            status=200,
+            json={"status": "queued"},
+            status=202,
         )
         
         sdk = LiteSOC(api_key="test-key", batching=False)
@@ -161,8 +161,8 @@ class TestLiteSOCNoBatching(unittest.TestCase):
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
-            json={"success": False, "error": "Test error"},
-            status=200,
+            json={"error": "Test error"},
+            status=400,
         )
         
         sdk = LiteSOC(api_key="test-key", batching=False, silent=True)
@@ -176,8 +176,8 @@ class TestLiteSOCNoBatching(unittest.TestCase):
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
-            json={"success": False, "error": "Test error"},
-            status=200,
+            json={"error": "Test error"},
+            status=400,
         )
         
         sdk = LiteSOC(api_key="test-key", batching=False, silent=False)
@@ -214,8 +214,8 @@ class TestLiteSOCBatching(unittest.TestCase):
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
-            json={"success": True},
-            status=200,
+            json={"status": "queued"},
+            status=202,
         )
         
         self.sdk.track("auth.login_success", actor_id="user_123")
@@ -225,20 +225,27 @@ class TestLiteSOCBatching(unittest.TestCase):
         self.assertEqual(self.sdk.get_queue_size(), 0)
 
     @responses.activate
-    def test_flush_sends_batch_events(self):
-        """Test flush sends batch of events"""
+    def test_flush_sends_multiple_events_individually(self):
+        """Test flush sends multiple events one at a time (API doesn't support batch)"""
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
-            json={"success": True, "events_accepted": 2},
-            status=200,
+            json={"status": "queued"},
+            status=202,
+        )
+        responses.add(
+            responses.POST,
+            "https://api.litesoc.io/collect",
+            json={"status": "queued"},
+            status=202,
         )
         
         self.sdk.track("auth.login_success", actor_id="user_1")
         self.sdk.track("auth.login_success", actor_id="user_2")
         self.sdk.flush()
         
-        self.assertEqual(len(responses.calls), 1)
+        # Should have made 2 separate requests (one per event)
+        self.assertEqual(len(responses.calls), 2)
         self.assertEqual(self.sdk.get_queue_size(), 0)
 
     @patch.object(LiteSOC, "_send_events")
@@ -297,8 +304,8 @@ class TestLiteSOCScheduledFlush(unittest.TestCase):
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
-            json={"success": True},
-            status=200,
+            json={"status": "queued"},
+            status=202,
         )
         
         sdk = LiteSOC(api_key="test-key", batching=True, batch_size=10, flush_interval=0.01)
@@ -335,8 +342,8 @@ class TestLiteSOCShutdown(unittest.TestCase):
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
-            json={"success": True},
-            status=200,
+            json={"status": "queued"},
+            status=202,
         )
         
         sdk = LiteSOC(api_key="test-key", batching=True, batch_size=10, flush_interval=10.0)
@@ -368,8 +375,8 @@ class TestLiteSOCSendEvents(unittest.TestCase):
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
-            json={"success": True},
-            status=200,
+            json={"status": "queued"},
+            status=202,
         )
         
         sdk = LiteSOC(api_key="test-key", batching=True, debug=True)
@@ -405,8 +412,8 @@ class TestLiteSOCSendEvents(unittest.TestCase):
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
-            json={"success": False, "error": "Invalid event"},
-            status=200,
+            json={"error": "Invalid event"},
+            status=400,
         )
         
         sdk = LiteSOC(api_key="test-key", batching=True)
@@ -459,6 +466,40 @@ class TestTimeoutHandling(unittest.TestCase):
         self.assertGreater(sdk.get_queue_size(), 0)
         
         sdk.clear_queue()
+        sdk.shutdown()
+
+    @responses.activate
+    def test_api_returns_error_in_body(self):
+        """Test API returns 200 with error in response body"""
+        responses.add(
+            responses.POST,
+            "https://api.litesoc.io/collect",
+            json={"error": "Invalid event payload"},
+            status=200,
+        )
+        
+        sdk = LiteSOC(api_key="test-key", batching=False, timeout=1.0)
+        result = sdk.track("auth.login_success", actor_id="user_123")
+        
+        # Should return False when API returns error in body
+        self.assertFalse(result)
+        sdk.shutdown()
+
+    @responses.activate
+    def test_api_returns_unexpected_response_format(self):
+        """Test API returns 200 with unexpected response format (no status/error)"""
+        responses.add(
+            responses.POST,
+            "https://api.litesoc.io/collect",
+            json={"message": "OK", "received": True},
+            status=200,
+        )
+        
+        sdk = LiteSOC(api_key="test-key", batching=False, timeout=1.0)
+        result = sdk.track("auth.login_success", actor_id="user_123")
+        
+        # Should return True (any 2xx is considered success)
+        self.assertTrue(result)
         sdk.shutdown()
 
 
@@ -712,7 +753,7 @@ class TestLiteSOCUserAgent(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key")
         user_agent = sdk._session.headers.get("User-Agent")
         self.assertTrue(user_agent.startswith("litesoc-python-sdk/"))
-        self.assertIn("2.2.0", user_agent)
+        self.assertIn("2.3.0", user_agent)
         sdk.shutdown()
 
     def test_api_key_header(self):
@@ -820,6 +861,25 @@ class TestManagementAPI(unittest.TestCase):
         self.assertEqual(result["status"], "resolved")
 
     @responses.activate
+    def test_resolve_alert_with_resolved_by(self):
+        """Test resolve_alert with resolved_by parameter"""
+        responses.add(
+            responses.PATCH,
+            "https://api.litesoc.io/alerts/alert_123",
+            json={"id": "alert_123", "status": "resolved", "resolved_by": "security-automation"},
+            status=200,
+        )
+        
+        result = self.sdk.resolve_alert(
+            "alert_123", 
+            "blocked_ip", 
+            notes="Blocked in firewall",
+            resolved_by="security-automation"
+        )
+        self.assertEqual(result["status"], "resolved")
+        self.assertEqual(result["resolved_by"], "security-automation")
+
+    @responses.activate
     def test_mark_alert_safe(self):
         """Test mark_alert_safe method"""
         responses.add(
@@ -844,6 +904,24 @@ class TestManagementAPI(unittest.TestCase):
         
         result = self.sdk.mark_alert_safe("alert_123")
         self.assertEqual(result["status"], "safe")
+
+    @responses.activate
+    def test_mark_alert_safe_with_resolved_by(self):
+        """Test mark_alert_safe with resolved_by parameter"""
+        responses.add(
+            responses.PATCH,
+            "https://api.litesoc.io/alerts/alert_123",
+            json={"id": "alert_123", "status": "dismissed", "resolved_by": "qa-automation"},
+            status=200,
+        )
+        
+        result = self.sdk.mark_alert_safe(
+            "alert_123",
+            notes="Expected test behavior",
+            resolved_by="qa-automation"
+        )
+        self.assertEqual(result["status"], "dismissed")
+        self.assertEqual(result["resolved_by"], "qa-automation")
 
     @responses.activate
     def test_get_events(self):
