@@ -753,7 +753,7 @@ class TestLiteSOCUserAgent(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key")
         user_agent = sdk._session.headers.get("User-Agent")
         self.assertTrue(user_agent.startswith("litesoc-python-sdk/"))
-        self.assertIn("2.3.1", user_agent)
+        self.assertIn("2.3.2", user_agent)
         sdk.shutdown()
 
     def test_api_key_header(self):
@@ -1210,6 +1210,34 @@ class TestResponseMetadata(unittest.TestCase):
         }
         
         self.assertEqual(metadata.to_dict(), expected)
+    
+    def test_from_headers_retention_with_days_suffix(self):
+        """Test parsing retention header with 'days' suffix (API format)"""
+        headers = {
+            "X-LiteSOC-Plan": "pro",
+            "X-LiteSOC-Retention": "30 days",
+            "X-LiteSOC-Cutoff": "2024-01-01T00:00:00Z",
+        }
+        
+        metadata = ResponseMetadata.from_headers(headers)
+        
+        self.assertEqual(metadata.plan, "pro")
+        self.assertEqual(metadata.retention_days, 30)
+        self.assertEqual(metadata.cutoff_date, "2024-01-01T00:00:00Z")
+    
+    def test_from_headers_retention_invalid_value(self):
+        """Test parsing retention header with invalid value returns None"""
+        headers = {
+            "X-LiteSOC-Plan": "pro",
+            "X-LiteSOC-Retention": "invalid",
+            "X-LiteSOC-Cutoff": "2024-01-01T00:00:00Z",
+        }
+        
+        metadata = ResponseMetadata.from_headers(headers)
+        
+        self.assertEqual(metadata.plan, "pro")
+        self.assertIsNone(metadata.retention_days)
+        self.assertEqual(metadata.cutoff_date, "2024-01-01T00:00:00Z")
 
 
 class TestPlanInfo(unittest.TestCase):

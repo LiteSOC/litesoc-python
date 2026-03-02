@@ -5,6 +5,20 @@ All notable changes to the LiteSOC Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.2] - 2026-03-02
+
+### Fixed
+- **`X-LiteSOC-Retention` header parsing** - Fixed `ResponseMetadata.from_headers()` to properly parse the `"30 days"` format returned by the API. Previously would fail when trying to convert the string directly to int.
+
+### Changed
+- Improved retention header parsing to handle both `"30 days"` and `"30"` formats for backward compatibility
+- Added graceful fallback to `None` when retention value cannot be parsed
+
+### Tests
+- Added test coverage for retention header with `" days"` suffix parsing
+- Added test coverage for invalid retention values (graceful degradation)
+- Maintained 100% test coverage (114 tests)
+
 ## [2.3.1] - 2026-03-02
 
 ### Fixed

@@ -423,7 +423,17 @@ class ResponseMetadata:
         retention_str = normalized.get("x-litesoc-retention")
         cutoff = normalized.get("x-litesoc-cutoff")
         
-        retention_days = int(retention_str) if retention_str else None
+        # Parse retention days - API returns "30 days" format, extract the number
+        retention_days: Optional[int] = None
+        if retention_str:
+            # Handle both "30 days" and "30" formats
+            retention_str = retention_str.strip()
+            if retention_str.endswith(" days"):
+                retention_str = retention_str[:-5]  # Remove " days" suffix
+            try:
+                retention_days = int(retention_str)
+            except ValueError:
+                retention_days = None
         
         return cls(
             plan=plan,

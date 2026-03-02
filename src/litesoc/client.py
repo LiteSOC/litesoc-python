@@ -23,7 +23,7 @@ from litesoc.types import (
     ResponseMetadata,
 )
 
-__version__ = "2.3.1"
+__version__ = "2.3.2"
 
 # Default base URL for the API
 DEFAULT_BASE_URL = "https://api.litesoc.io"
