@@ -1529,32 +1529,10 @@ class TestAlert(unittest.TestCase):
             "description": "Multiple failed login attempts from single IP",
             "source_ip": "192.168.1.100",
             "actor_id": "user_123",
-            "trigger_event_id": "evt_xyz789",
-            "forensics": {
-                "network": {
-                    "is_vpn": True,
-                    "is_tor": False,
-                    "is_proxy": False,
-                    "is_datacenter": True,
-                    "is_mobile": False,
-                    "asn": 12345,
-                    "asn_org": "Example Hosting",
-                    "isp": "Example ISP",
-                },
-                "location": {
-                    "city": "New York",
-                    "region": "New York",
-                    "country_code": "US",
-                    "country_name": "United States",
-                    "latitude": 40.7128,
-                    "longitude": -74.006,
-                    "timezone": "America/New_York",
-                },
-            },
             "created_at": "2026-03-01T12:00:00Z",
             "updated_at": "2026-03-01T12:30:00Z",
             "resolved_at": None,
-            "resolution_notes": None,
+            "resolved_by": None,
             "metadata": {"attempts": 50},
         }
         
@@ -1565,12 +1543,9 @@ class TestAlert(unittest.TestCase):
         self.assertEqual(alert.severity, "high")
         self.assertEqual(alert.status, "open")
         self.assertEqual(alert.title, "Brute Force Attack Detected")
-        self.assertEqual(alert.trigger_event_id, "evt_xyz789")
-        self.assertIsNotNone(alert.forensics)
-        self.assertTrue(alert.forensics.network.is_vpn)
-        self.assertEqual(alert.forensics.network.asn, 12345)
-        self.assertEqual(alert.forensics.location.city, "New York")
-        self.assertEqual(alert.forensics.location.country_code, "US")
+        self.assertEqual(alert.source_ip, "192.168.1.100")
+        self.assertEqual(alert.actor_id, "user_123")
+        self.assertIsNone(alert.resolved_by)
         self.assertEqual(alert.metadata, {"attempts": 50})
     
     def test_from_dict_minimal(self):
@@ -1588,36 +1563,32 @@ class TestAlert(unittest.TestCase):
         self.assertEqual(alert.severity, "")
         self.assertEqual(alert.status, "")
         self.assertEqual(alert.title, "")
-        self.assertIsNone(alert.trigger_event_id)
-        self.assertIsNone(alert.forensics)
+        self.assertIsNone(alert.resolved_by)
         self.assertIsNone(alert.description)
     
-    def test_from_dict_null_forensics_free_tier(self):
-        """Test creating Alert with null forensics (Free tier)"""
+    def test_from_dict_with_resolved_by(self):
+        """Test creating Alert with resolved_by"""
         from litesoc import Alert
         
         data = {
-            "id": "alert_free",
+            "id": "alert_resolved",
             "alert_type": "geo_anomaly",
             "severity": "medium",
-            "status": "open",
+            "status": "resolved",
             "title": "Geographic Anomaly",
-            "trigger_event_id": "evt_123",
-            "forensics": None,
+            "resolved_by": "user_admin_123",
+            "resolved_at": "2026-03-01T14:00:00Z",
         }
         
         alert = Alert.from_dict(data)
         
-        self.assertEqual(alert.id, "alert_free")
-        self.assertEqual(alert.trigger_event_id, "evt_123")
-        self.assertIsNone(alert.forensics)
-        # Accessing forensics properties should not throw
-        if alert.forensics:
-            _ = alert.forensics.network.is_vpn
+        self.assertEqual(alert.id, "alert_resolved")
+        self.assertEqual(alert.resolved_by, "user_admin_123")
+        self.assertEqual(alert.resolved_at, "2026-03-01T14:00:00Z")
     
     def test_to_dict(self):
         """Test Alert to_dict method"""
-        from litesoc import Alert, Forensics, LocationForensics, NetworkForensics
+        from litesoc import Alert
         
         alert = Alert(
             id="alert_test",
@@ -1625,45 +1596,36 @@ class TestAlert(unittest.TestCase):
             severity="critical",
             status="open",
             title="Impossible Travel Detected",
-            trigger_event_id="evt_abc",
-            forensics=Forensics(
-                network=NetworkForensics(
-                    is_vpn=False,
-                    is_tor=True,
-                    is_proxy=False,
-                    is_datacenter=False,
-                    is_mobile=False,
-                ),
-                location=LocationForensics(city="Paris", country_code="FR"),
-            ),
+            source_ip="10.0.0.1",
+            actor_id="user_456",
+            resolved_by="admin_789",
         )
         
         result = alert.to_dict()
         
         self.assertEqual(result["id"], "alert_test")
-        self.assertEqual(result["trigger_event_id"], "evt_abc")
-        self.assertIsNotNone(result["forensics"])
-        self.assertTrue(result["forensics"]["network"]["is_tor"])
-        self.assertEqual(result["forensics"]["location"]["city"], "Paris")
+        self.assertEqual(result["alert_type"], "impossible_travel")
+        self.assertEqual(result["source_ip"], "10.0.0.1")
+        self.assertEqual(result["actor_id"], "user_456")
+        self.assertEqual(result["resolved_by"], "admin_789")
     
-    def test_to_dict_null_forensics(self):
-        """Test Alert to_dict with null forensics"""
+    def test_to_dict_null_resolved_by(self):
+        """Test Alert to_dict with null resolved_by"""
         from litesoc import Alert
         
         alert = Alert(
-            id="alert_no_forensics",
+            id="alert_no_resolved_by",
             alert_type="suspicious_activity",
             severity="low",
-            status="resolved",
+            status="open",
             title="Suspicious Activity",
-            forensics=None,
+            resolved_by=None,
         )
         
         result = alert.to_dict()
         
-        self.assertEqual(result["id"], "alert_no_forensics")
-        self.assertIsNone(result["forensics"])
-        self.assertIsNone(result["trigger_event_id"])
+        self.assertEqual(result["id"], "alert_no_resolved_by")
+        self.assertIsNone(result["resolved_by"])
 
 
 if __name__ == "__main__":

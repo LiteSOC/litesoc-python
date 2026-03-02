@@ -41,6 +41,7 @@ from litesoc.types import (
     LiteSOCError,
     LocationForensics,
     NetworkForensics,
+    NotFoundError,
     PlanRestrictedError,
     QueuedEvent,
     RateLimitError,
@@ -59,6 +60,7 @@ __all__ = [
     "LiteSOCError",
     "LiteSOCAuthError",
     "RateLimitError",
+    "NotFoundError",
     "PlanRestrictedError",
     # Types
     "Actor",

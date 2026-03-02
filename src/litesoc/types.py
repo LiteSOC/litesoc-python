@@ -127,6 +127,23 @@ class RateLimitError(LiteSOCError):
         self.retry_after = retry_after
 
 
+class NotFoundError(LiteSOCError):
+    """
+    Resource not found error (404).
+    
+    Raised when the requested resource (alert, event, etc.)
+    does not exist or is not accessible.
+    """
+    
+    def __init__(
+        self,
+        message: str = "Resource not found",
+        status_code: int = 404,
+        error_code: Optional[str] = None
+    ) -> None:
+        super().__init__(message, status_code, error_code)
+
+
 class PlanRestrictedError(LiteSOCError):
     """
     Plan restriction error (403).
@@ -649,9 +666,8 @@ class Alert:
         for alert_data in alerts_data.get("data", []):
             alert = Alert.from_dict(alert_data)
             print(f"{alert.title} - {alert.severity}")
-            if alert.forensics:
-                print(f"  VPN: {alert.forensics.network.is_vpn}")
-                print(f"  Location: {alert.forensics.location.city}")
+            if alert.resolved_by:
+                print(f"  Resolved by: {alert.resolved_by}")
         ```
     """
     
@@ -679,15 +695,6 @@ class Alert:
     actor_id: Optional[str] = None
     """Actor/user ID associated with the alert."""
     
-    trigger_event_id: Optional[str] = None
-    """The event ID that triggered this alert."""
-    
-    forensics: Optional[Forensics] = None
-    """
-    Forensics data (network intelligence + location).
-    Only available on Pro/Enterprise plans. Returns None for Free tier.
-    """
-    
     created_at: Optional[str] = None
     """ISO 8601 timestamp when alert was created."""
     
@@ -697,8 +704,8 @@ class Alert:
     resolved_at: Optional[str] = None
     """ISO 8601 timestamp when alert was resolved (if resolved)."""
     
-    resolution_notes: Optional[str] = None
-    """Notes explaining the resolution."""
+    resolved_by: Optional[str] = None
+    """User ID who resolved the alert."""
     
     metadata: Optional[dict[str, Any]] = None
     """Additional metadata."""
@@ -723,12 +730,10 @@ class Alert:
             description=data.get("description"),
             source_ip=data.get("source_ip"),
             actor_id=data.get("actor_id"),
-            trigger_event_id=data.get("trigger_event_id"),
-            forensics=Forensics.from_dict(data.get("forensics")),
             created_at=data.get("created_at"),
             updated_at=data.get("updated_at"),
             resolved_at=data.get("resolved_at"),
-            resolution_notes=data.get("resolution_notes"),
+            resolved_by=data.get("resolved_by"),
             metadata=data.get("metadata"),
         )
     
@@ -743,11 +748,9 @@ class Alert:
             "description": self.description,
             "source_ip": self.source_ip,
             "actor_id": self.actor_id,
-            "trigger_event_id": self.trigger_event_id,
-            "forensics": self.forensics.to_dict() if self.forensics else None,
             "created_at": self.created_at,
             "updated_at": self.updated_at,
             "resolved_at": self.resolved_at,
-            "resolution_notes": self.resolution_notes,
+            "resolved_by": self.resolved_by,
             "metadata": self.metadata,
         }

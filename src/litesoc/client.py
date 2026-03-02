@@ -17,6 +17,7 @@ from litesoc.types import (
     LiteSOCAuthError,
     LiteSOCConfig,
     LiteSOCError,
+    NotFoundError,
     PlanRestrictedError,
     QueuedEvent,
     RateLimitError,
@@ -917,6 +918,13 @@ class LiteSOC:
                 status_code=status_code,
                 error_code=error_code,
                 retry_after=int(retry_after) if retry_after else None,
+            )
+        
+        if status_code == 404:
+            raise NotFoundError(
+                message,
+                status_code=status_code,
+                error_code=error_code,
             )
         
         raise LiteSOCError(
