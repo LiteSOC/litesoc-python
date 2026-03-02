@@ -33,6 +33,7 @@ from litesoc.types import (
     AuthzEvent,
     BillingEvent,
     DataEvent,
+    Event,
     EventSeverity,
     EventType,
     Forensics,
@@ -50,6 +51,7 @@ from litesoc.types import (
     SecurityEvents,
     TrackOptions,
     UserEvent,
+    ValidationError,
 )
 
 __version__ = "2.2.0"
@@ -62,9 +64,11 @@ __all__ = [
     "RateLimitError",
     "NotFoundError",
     "PlanRestrictedError",
+    "ValidationError",
     # Types
     "Actor",
     "Alert",
+    "Event",
     "Forensics",
     "LocationForensics",
     "NetworkForensics",

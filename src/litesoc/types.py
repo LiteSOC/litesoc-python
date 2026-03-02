@@ -144,6 +144,23 @@ class NotFoundError(LiteSOCError):
         super().__init__(message, status_code, error_code)
 
 
+class ValidationError(LiteSOCError):
+    """
+    Validation error (400).
+    
+    Raised when the request contains invalid parameters,
+    malformed JSON, or fails schema validation.
+    """
+    
+    def __init__(
+        self,
+        message: str = "Invalid request",
+        status_code: int = 400,
+        error_code: Optional[str] = None
+    ) -> None:
+        super().__init__(message, status_code, error_code)
+
+
 class PlanRestrictedError(LiteSOCError):
     """
     Plan restriction error (403).
@@ -754,3 +771,146 @@ class Alert:
             "resolved_by": self.resolved_by,
             "metadata": self.metadata,
         }
+
+
+@dataclass
+class Event:
+    """
+    Event object returned from the Management API.
+    
+    Represents a security event tracked by LiteSOC.
+    
+    Note: Free tier users will have forensic fields (is_vpn, is_tor, is_proxy,
+    is_datacenter, latitude, longitude, city) returned as None (redacted).
+    
+    Example:
+        ```python
+        events_data = litesoc.get_events(event_name="auth.login_failed")
+        for event_data in events_data.get("data", []):
+            event = Event.from_dict(event_data)
+            print(f"{event.event_name} from {event.user_ip}")
+            if event.is_vpn:
+                print("  Warning: VPN detected")
+        ```
+    """
+    
+    id: str
+    """Unique event identifier (UUID)."""
+    
+    org_id: str
+    """Organization ID."""
+    
+    event_name: str
+    """Event type (e.g., 'auth.login_failed')."""
+    
+    actor_id: Optional[str] = None
+    """Actor/user ID associated with the event."""
+    
+    user_ip: Optional[str] = None
+    """End-user's IP address."""
+    
+    server_ip: Optional[str] = None
+    """Server IP that processed the event."""
+    
+    country_code: Optional[str] = None
+    """ISO 3166-1 alpha-2 country code."""
+    
+    city: Optional[str] = None
+    """City name (Pro/Enterprise only, None for Free)."""
+    
+    is_vpn: Optional[bool] = None
+    """Whether IP is from a VPN provider (Pro/Enterprise only)."""
+    
+    is_tor: Optional[bool] = None
+    """Whether IP is a Tor exit node (Pro/Enterprise only)."""
+    
+    is_proxy: Optional[bool] = None
+    """Whether IP is from a proxy service (Pro/Enterprise only)."""
+    
+    is_datacenter: Optional[bool] = None
+    """Whether IP is from a datacenter/cloud provider (Pro/Enterprise only)."""
+    
+    latitude: Optional[float] = None
+    """GPS latitude coordinate (Pro/Enterprise only)."""
+    
+    longitude: Optional[float] = None
+    """GPS longitude coordinate (Pro/Enterprise only)."""
+    
+    severity: str = "info"
+    """Event severity ('info', 'warning', 'critical')."""
+    
+    metadata: Optional[dict[str, Any]] = None
+    """Additional event metadata."""
+    
+    created_at: Optional[str] = None
+    """ISO 8601 timestamp when event was created."""
+    
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "Event":
+        """
+        Create Event from API response dictionary.
+        
+        Args:
+            data: Event dictionary from API response
+        
+        Returns:
+            Event instance
+        """
+        return cls(
+            id=data.get("id", ""),
+            org_id=data.get("org_id", ""),
+            event_name=data.get("event_name", ""),
+            actor_id=data.get("actor_id"),
+            user_ip=data.get("user_ip"),
+            server_ip=data.get("server_ip"),
+            country_code=data.get("country_code"),
+            city=data.get("city"),
+            is_vpn=data.get("is_vpn"),
+            is_tor=data.get("is_tor"),
+            is_proxy=data.get("is_proxy"),
+            is_datacenter=data.get("is_datacenter"),
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+            severity=data.get("severity", "info"),
+            metadata=data.get("metadata"),
+            created_at=data.get("created_at"),
+        )
+    
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary."""
+        return {
+            "id": self.id,
+            "org_id": self.org_id,
+            "event_name": self.event_name,
+            "actor_id": self.actor_id,
+            "user_ip": self.user_ip,
+            "server_ip": self.server_ip,
+            "country_code": self.country_code,
+            "city": self.city,
+            "is_vpn": self.is_vpn,
+            "is_tor": self.is_tor,
+            "is_proxy": self.is_proxy,
+            "is_datacenter": self.is_datacenter,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "severity": self.severity,
+            "metadata": self.metadata,
+            "created_at": self.created_at,
+        }
+    
+    def has_forensics(self) -> bool:
+        """
+        Check if forensic fields are available (not redacted).
+        
+        Free tier users have forensic fields redacted (None).
+        Pro/Enterprise users have full forensic data.
+        
+        Returns:
+            True if forensic data is available
+        """
+        return (
+            self.is_vpn is not None
+            or self.is_tor is not None
+            or self.is_proxy is not None
+            or self.latitude is not None
+        )

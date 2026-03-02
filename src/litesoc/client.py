@@ -22,6 +22,7 @@ from litesoc.types import (
     QueuedEvent,
     RateLimitError,
     ResponseMetadata,
+    ValidationError,
 )
 
 __version__ = "2.3.2"
@@ -922,6 +923,13 @@ class LiteSOC:
         
         if status_code == 404:
             raise NotFoundError(
+                message,
+                status_code=status_code,
+                error_code=error_code,
+            )
+        
+        if status_code == 400:
+            raise ValidationError(
                 message,
                 status_code=status_code,
                 error_code=error_code,
