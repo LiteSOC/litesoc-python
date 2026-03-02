@@ -647,8 +647,8 @@ class TestSecurityEvents(unittest.TestCase):
         self.assertEqual(SecurityEvents.SECURITY_BRUTE_FORCE_DETECTED.value, "security.brute_force_detected")
 
     def test_security_events_count(self):
-        """Test that there are exactly 26 standard events"""
-        self.assertEqual(len(SecurityEvents), 26)
+        """Test that there are exactly 27 standard events (26 core + user_impersonation)"""
+        self.assertEqual(len(SecurityEvents), 27)
 
     def test_security_events_track(self):
         """Test tracking with SecurityEvents enum"""
@@ -753,7 +753,7 @@ class TestLiteSOCUserAgent(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key")
         user_agent = sdk._session.headers.get("User-Agent")
         self.assertTrue(user_agent.startswith("litesoc-python-sdk/"))
-        self.assertIn("2.3.0", user_agent)
+        self.assertIn("2.3.1", user_agent)
         sdk.shutdown()
 
     def test_api_key_header(self):

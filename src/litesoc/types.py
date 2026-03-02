@@ -48,6 +48,7 @@ class SecurityEvents(str, Enum):
     AUTHZ_ACCESS_DENIED = "authz.access_denied"
     
     # Admin events (7 events)
+    ADMIN_USER_CREATED = "admin.user_created"
     ADMIN_PRIVILEGE_ESCALATION = "admin.privilege_escalation"
     ADMIN_USER_IMPERSONATION = "admin.user_impersonation"
     ADMIN_SETTINGS_CHANGED = "admin.settings_changed"
@@ -154,11 +155,10 @@ class PlanRestrictedError(LiteSOCError):
         self.upgrade_url = self.UPGRADE_URL
 
 
-# Event severity levels
+# Event severity levels (matches Events API: info, warning, critical)
 class EventSeverity(str, Enum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
+    INFO = "info"
+    WARNING = "warning"
     CRITICAL = "critical"
 
 
@@ -188,6 +188,7 @@ AuthzEvent = Literal[
 
 # Admin events (7 events)
 AdminEvent = Literal[
+    "admin.user_created",
     "admin.privilege_escalation",
     "admin.user_impersonation",
     "admin.settings_changed",
