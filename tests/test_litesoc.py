@@ -10,14 +10,17 @@ import responses
 
 from litesoc import (
     Actor,
+    Event,
     EventSeverity,
     LiteSOC,
     LiteSOCAuthError,
     LiteSOCError,
+    NotFoundError,
     PlanRestrictedError,
     RateLimitError,
     ResponseMetadata,
     SecurityEvents,
+    ValidationError,
 )
 
 
@@ -753,7 +756,7 @@ class TestLiteSOCUserAgent(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key")
         user_agent = sdk._session.headers.get("User-Agent")
         self.assertTrue(user_agent.startswith("litesoc-python-sdk/"))
-        self.assertIn("2.3.2", user_agent)
+        self.assertIn("2.4.0", user_agent)
         sdk.shutdown()
 
     def test_api_key_header(self):
@@ -1626,6 +1629,183 @@ class TestAlert(unittest.TestCase):
         
         self.assertEqual(result["id"], "alert_no_resolved_by")
         self.assertIsNone(result["resolved_by"])
+
+
+class TestEvent(unittest.TestCase):
+    """Test Event class"""
+
+    def test_from_dict_full(self):
+        """Test Event.from_dict with all fields"""
+        data = {
+            "id": "evt_12345",
+            "org_id": "org_67890",
+            "event_name": "auth.login_failed",
+            "actor_id": "user_123",
+            "user_ip": "192.168.1.100",
+            "server_ip": "10.0.0.1",
+            "country_code": "US",
+            "city": "San Francisco",
+            "is_vpn": True,
+            "is_tor": False,
+            "is_proxy": False,
+            "is_datacenter": True,
+            "latitude": 37.7749,
+            "longitude": -122.4194,
+            "severity": "critical",
+            "metadata": {"reason": "invalid_password"},
+            "created_at": "2026-03-02T10:00:00Z",
+        }
+
+        event = Event.from_dict(data)
+
+        self.assertEqual(event.id, "evt_12345")
+        self.assertEqual(event.org_id, "org_67890")
+        self.assertEqual(event.event_name, "auth.login_failed")
+        self.assertEqual(event.actor_id, "user_123")
+        self.assertEqual(event.user_ip, "192.168.1.100")
+        self.assertEqual(event.server_ip, "10.0.0.1")
+        self.assertEqual(event.country_code, "US")
+        self.assertEqual(event.city, "San Francisco")
+        self.assertTrue(event.is_vpn)
+        self.assertFalse(event.is_tor)
+        self.assertFalse(event.is_proxy)
+        self.assertTrue(event.is_datacenter)
+        self.assertEqual(event.latitude, 37.7749)
+        self.assertEqual(event.longitude, -122.4194)
+        self.assertEqual(event.severity, "critical")
+        self.assertEqual(event.metadata, {"reason": "invalid_password"})
+        self.assertEqual(event.created_at, "2026-03-02T10:00:00Z")
+
+    def test_from_dict_minimal(self):
+        """Test Event.from_dict with minimal fields"""
+        data = {
+            "id": "evt_minimal",
+            "org_id": "org_test",
+            "event_name": "auth.login",
+        }
+
+        event = Event.from_dict(data)
+
+        self.assertEqual(event.id, "evt_minimal")
+        self.assertEqual(event.org_id, "org_test")
+        self.assertEqual(event.event_name, "auth.login")
+        self.assertIsNone(event.actor_id)
+        self.assertIsNone(event.user_ip)
+        self.assertIsNone(event.is_vpn)
+        self.assertEqual(event.severity, "info")  # default
+
+    def test_to_dict(self):
+        """Test Event.to_dict"""
+        event = Event.from_dict({
+            "id": "evt_123",
+            "org_id": "org_456",
+            "event_name": "auth.logout",
+            "actor_id": "user_789",
+            "severity": "warning",
+        })
+
+        result = event.to_dict()
+
+        self.assertEqual(result["id"], "evt_123")
+        self.assertEqual(result["org_id"], "org_456")
+        self.assertEqual(result["event_name"], "auth.logout")
+        self.assertEqual(result["actor_id"], "user_789")
+        self.assertEqual(result["severity"], "warning")
+
+    def test_has_forensics_true(self):
+        """Test Event.has_forensics returns True when forensic data present"""
+        event = Event.from_dict({
+            "id": "evt_123",
+            "org_id": "org_456",
+            "event_name": "auth.login",
+            "is_vpn": True,
+        })
+
+        self.assertTrue(event.has_forensics())
+
+    def test_has_forensics_false(self):
+        """Test Event.has_forensics returns False when no forensic data"""
+        event = Event.from_dict({
+            "id": "evt_123",
+            "org_id": "org_456",
+            "event_name": "auth.login",
+        })
+
+        self.assertFalse(event.has_forensics())
+
+
+class TestNotFoundError(unittest.TestCase):
+    """Test NotFoundError exception"""
+
+    def test_not_found_error_default(self):
+        """Test NotFoundError with default message"""
+        error = NotFoundError()
+        self.assertEqual(error.message, "Resource not found")
+        self.assertEqual(error.status_code, 404)
+
+    def test_not_found_error_custom(self):
+        """Test NotFoundError with custom message"""
+        error = NotFoundError("Alert not found", status_code=404, error_code="ALERT_NOT_FOUND")
+        self.assertEqual(error.message, "Alert not found")
+        self.assertEqual(error.status_code, 404)
+        self.assertEqual(error.error_code, "ALERT_NOT_FOUND")
+
+
+class TestValidationError(unittest.TestCase):
+    """Test ValidationError exception"""
+
+    def test_validation_error_default(self):
+        """Test ValidationError with default message"""
+        error = ValidationError()
+        self.assertEqual(error.message, "Invalid request")
+        self.assertEqual(error.status_code, 400)
+
+    def test_validation_error_custom(self):
+        """Test ValidationError with custom message"""
+        error = ValidationError("Invalid event type", status_code=400, error_code="VALIDATION_FAILED")
+        self.assertEqual(error.message, "Invalid event type")
+        self.assertEqual(error.status_code, 400)
+        self.assertEqual(error.error_code, "VALIDATION_FAILED")
+
+
+class TestManagementAPINotFoundValidation(unittest.TestCase):
+    """Test 404 and 400 errors from Management API"""
+
+    @responses.activate
+    def test_404_not_found(self):
+        """Test 404 Not Found raises NotFoundError"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/alerts/nonexistent",
+            json={"error": {"code": "NOT_FOUND", "message": "Alert not found"}},
+            status=404,
+        )
+
+        sdk = LiteSOC(api_key="test-key", batching=False, silent=False, debug=False)
+
+        with self.assertRaises(NotFoundError) as context:
+            sdk.get_alert("nonexistent")
+
+        self.assertEqual(context.exception.status_code, 404)
+        sdk.shutdown()
+
+    @responses.activate
+    def test_400_validation_error(self):
+        """Test 400 Bad Request raises ValidationError"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/events",
+            json={"error": {"code": "VALIDATION_FAILED", "message": "Invalid parameters"}},
+            status=400,
+        )
+
+        sdk = LiteSOC(api_key="test-key", batching=False, silent=False, debug=False)
+
+        with self.assertRaises(ValidationError) as context:
+            sdk.get_events(limit=10)
+
+        self.assertEqual(context.exception.status_code, 400)
+        sdk.shutdown()
 
 
 if __name__ == "__main__":

@@ -25,7 +25,7 @@ from litesoc.types import (
     ValidationError,
 )
 
-__version__ = "2.3.2"
+__version__ = "2.4.0"
 
 # Default base URL for the API
 DEFAULT_BASE_URL = "https://api.litesoc.io"
