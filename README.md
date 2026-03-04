@@ -660,11 +660,33 @@ ruff format src/ tests/
 ### Building
 
 ```bash
-# Build package
+# Build package (sdist + wheel)
 python -m build
 
 # Install locally
 pip install -e .
+```
+
+### Publishing to PyPI
+
+**Option A – Publish via GitHub Release (recommended)**
+
+1. Add repository secret in GitHub: **Settings → Secrets and variables → Actions → New repository secret**  
+   - Name: `PYPI_API_TOKEN`  
+   - Value: your [PyPI API token](https://pypi.org/manage/account/token/) (scope: entire account or just this project).
+
+2. Create a release: **Releases → Draft a new release**  
+   - Choose a tag (e.g. `v2.5.0`) or create one.  
+   - Publish the release. The **Publish to PyPI** workflow will build and upload the package.
+
+**Option B – Publish manually**
+
+```bash
+# From repo root, in a venv with build + twine installed
+python -m build
+twine upload dist/*
+# When prompted: username = __token__, password = your PyPI API token
+# Or use env: TWINE_USERNAME=__token__ TWINE_PASSWORD=pypi-xxx twine upload dist/*
 ```
 
 ## License
