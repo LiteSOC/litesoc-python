@@ -5,6 +5,23 @@ All notable changes to the LiteSOC Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.5.0] - 2026-03-03
+
+### Added
+- **Batch ingestion support** for the Event Collection API:
+  - New `track_batch(events: list[dict[str, Any]], *, timeout: Optional[float] = None) -> int` helper to send up to 100 events in a single POST `/collect` request.
+
+### Changed
+- **Event sending semantics**:
+  - `_send_events()` now sends a single event as a flat JSON body and multiple events as `{ "events": [ ... ] }`, matching the backend batch ingestion contract.
+  - Quota and rate limiting are now batch-aware at the API level; this SDK release simply exposes the new format.
+- **Logging & metadata**:
+  - Each batched event includes `_sdk: "litesoc-python"` and `_sdk_version` metadata, consistent with single-event mode.
+
+### Notes
+- Backwards compatible:
+  - Existing `track()` and `flush()` behavior is preserved; batching is an optimization path for applications that choose to use `track_batch`.
+
 ## [2.4.0] - 2026-03-02
 
 ### Added

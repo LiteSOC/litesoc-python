@@ -43,6 +43,7 @@ litesoc.flush()
 - ✅ **Management API** - Query events and alerts via `/api/v1/events` and `/api/v1/alerts`
 - ✅ **26 standard security event types** - Authentication, authorization, admin, data, and security events
 - ✅ **Automatic batching** - Events are batched for efficient delivery
+- ✅ **Batch ingestion helper** - `track_batch()` sends up to 100 events in a single request
 - ✅ **Retry logic** - Failed events are automatically retried
 - ✅ **Type hints** - Full type annotations for IDE support
 - ✅ **Thread-safe** - Safe to use across multiple threads
@@ -118,6 +119,37 @@ litesoc.track("auth.login_failed",
     actor_email="user@example.com",
     user_ip="192.168.1.1"
 )
+```
+
+### Batch Ingestion with `track_batch` (v2.5.0+)
+
+To minimize network overhead and take advantage of Redis pipelining on the
+LiteSOC backend, you can send up to **100 events** in a single call using
+`track_batch`:
+
+```python
+from litesoc import LiteSOC
+
+litesoc = LiteSOC(api_key="your-api-key")
+
+events = [
+    {
+        "event_name": "auth.login_success",
+        "actor_id": "user_123",
+        "actor_email": "user@example.com",
+        "user_ip": "203.0.113.50",
+        "metadata": {"method": "password"},
+    },
+    {
+        "event_name": "data.export",
+        "actor_id": "user_123",
+        "user_ip": "203.0.113.50",
+        "metadata": {"table": "orders", "rows": 500},
+    },
+]
+
+accepted = litesoc.track_batch(events)
+print(f"{accepted} events accepted")
 ```
 
 ### Using Actor Object

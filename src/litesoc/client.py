@@ -25,7 +25,7 @@ from litesoc.types import (
     ValidationError,
 )
 
-__version__ = "2.4.0"
+__version__ = "2.5.0"
 
 # Default base URL for the API
 DEFAULT_BASE_URL = "https://api.litesoc.io"
@@ -963,59 +963,158 @@ class LiteSOC:
     
     def _send_events(self, events: list[QueuedEvent], *, timeout: Optional[float] = None) -> None:
         """Send events to the LiteSOC API.
-        
-        Note: The API only accepts single events, so this method sends
-        each event individually. Batching is handled client-side for
-        efficient queuing, but server requests are made one at a time.
+
+        Single event: flat payload ``{ event, actor, … }`` (unchanged behaviour).
+        Multiple events: batch format ``{ events: […] }`` — one HTTP request
+        instead of N, reducing latency and Upstash request-unit costs.
         """
         if not events:
             return
         
         request_timeout = timeout if timeout is not None else self._config.timeout
-        failed_events: list[QueuedEvent] = []
+
+        # Build the payload once
+        if len(events) == 1:
+            payload: dict[str, Any] = events[0].to_dict()
+        else:
+            payload = {"events": [e.to_dict() for e in events]}
         
-        for event in events:
-            try:
-                payload = event.to_dict()
-                
-                response = self._session.post(
-                    self._config.endpoint,
-                    json=payload,
-                    timeout=request_timeout,
-                )
-                
-                response.raise_for_status()
-                result = response.json()
-                
-                # API returns { status: "queued" } or { status: "inserted" }
-                if result.get("status") in ("queued", "inserted"):
-                    self._log(f"Successfully sent event: {event.event}")
-                elif result.get("error"):
-                    raise Exception(result.get("error"))
-                else:
-                    # Any 2xx response is considered success
-                    self._log(f"Successfully sent event: {event.event}")
+        try:
+            response = self._session.post(
+                self._config.endpoint,
+                json=payload,
+                timeout=request_timeout,
+            )
             
-            except requests.exceptions.Timeout:
-                # Re-raise timeout so callers can handle it specifically
-                raise
-            except Exception as e:
-                self._log(f"Failed to send event {event.event}: {e}")
-                # Track failed event for retry
+            response.raise_for_status()
+            result = response.json()
+            
+            if result.get("status") in ("queued", "inserted"):
+                count = result.get("queued") or result.get("inserted") or len(events)
+                self._log(f"Successfully sent {count} event(s)")
+            elif result.get("error"):
+                raise Exception(result.get("error"))
+            else:
+                self._log(f"Successfully sent {len(events)} event(s)")
+        
+        except requests.exceptions.Timeout:
+            raise
+        except Exception as e:
+            self._log(f"Failed to send batch of {len(events)} event(s): {e}")
+            # Re-queue failed events for retry
+            failed_events: list[QueuedEvent] = []
+            for event in events:
                 if event.retry_count < 3:
                     event.retry_count += 1
                     failed_events.append(event)
-        
-        # Re-queue failed events for retry
-        if failed_events and self._config.batching:
-            self._log(f"Re-queuing {len(failed_events)} events for retry")
-            with self._queue_lock:
-                self._queue = failed_events + self._queue
-            self._schedule_flush()
-        
-        # If all events failed, raise to signal error
-        if len(failed_events) == len(events) and failed_events:
-            raise Exception(f"All {len(events)} events failed to send")
+            
+            if failed_events and self._config.batching:
+                self._log(f"Re-queuing {len(failed_events)} event(s) for retry")
+                with self._queue_lock:
+                    self._queue = failed_events + self._queue
+                self._schedule_flush()
+            
+            if failed_events:
+                raise Exception(f"Failed to send {len(events)} event(s): {e}") from e
+
+    def track_batch(
+        self,
+        events: list[dict[str, Any]],
+        *,
+        timeout: Optional[float] = None,
+    ) -> int:
+        """Track a batch of security events in a **single API request**.
+
+        Use this instead of calling ``track()`` in a loop when you already have
+        a set of events ready to send.  The SDK posts ``{ events: […] }`` to
+        ``/collect``, which uses Redis pipelining server-side so the entire
+        batch costs **one Upstash request unit** instead of N.
+
+        - Maximum **100 events** per call.
+        - Quota is reserved atomically for the full batch.
+        - Rate-limit counter is incremented by the batch size, not by 1.
+
+        Args:
+            events: List of event dicts.  Each dict accepts the same keys as
+                :meth:`track` (``event_name``, ``actor_id``, ``actor_email``,
+                ``actor``, ``user_ip``, ``metadata``).
+            timeout: Per-request timeout in seconds (overrides class default).
+
+        Returns:
+            Number of events accepted by the server (0 on error when
+            ``silent=True``).
+
+        Raises:
+            ValueError: If ``events`` is empty or exceeds 100 items.
+            LiteSOCError: If the server returns an error (when ``silent=False``).
+
+        Example::
+
+            result = litesoc.track_batch([
+                {
+                    "event_name": "auth.login_success",
+                    "actor_id": user.id,
+                    "actor_email": user.email,
+                    "user_ip": request.remote_addr,
+                },
+                {
+                    "event_name": "data.export",
+                    "actor_id": user.id,
+                    "user_ip": request.remote_addr,
+                    "metadata": {"rows": 500, "table": "orders"},
+                },
+            ])
+            print(f"{result} events accepted")
+        """
+        if not events:
+            raise ValueError("track_batch requires at least one event")
+        if len(events) > 100:
+            raise ValueError("track_batch supports up to 100 events per call. Split into multiple calls.")
+
+        queued_events: list[QueuedEvent] = []
+        for item in events:
+            event_name = item.get("event_name") or item.get("event", "")
+            actor_id: Optional[str] = item.get("actor_id")
+            actor_email: Optional[str] = item.get("actor_email")
+            actor_raw = item.get("actor")
+
+            actor_dict: Optional[dict[str, Optional[str]]] = None
+            if actor_raw is not None:
+                if isinstance(actor_raw, Actor):
+                    actor_dict = actor_raw.to_dict()
+                elif isinstance(actor_raw, str):
+                    actor_dict = {"id": actor_raw, "email": actor_email}
+                elif isinstance(actor_raw, dict):
+                    actor_dict = {
+                        "id": actor_raw.get("id"),
+                        "email": actor_raw.get("email") or actor_email,
+                    }
+            elif actor_id is not None:
+                actor_dict = {"id": actor_id, "email": actor_email}
+            elif actor_email is not None:
+                actor_dict = {"id": actor_email, "email": actor_email}
+
+            metadata: dict[str, Any] = {
+                **(item.get("metadata") or {}),
+                "_sdk": "litesoc-python",
+                "_sdk_version": __version__,
+            }
+
+            queued_events.append(
+                QueuedEvent(
+                    event=event_name,
+                    actor=actor_dict,
+                    user_ip=item.get("user_ip"),
+                    metadata=metadata,
+                )
+            )
+
+        try:
+            self._send_events(queued_events, timeout=timeout)
+            return len(queued_events)
+        except Exception as e:
+            self._handle_error("track_batch", e)
+            return 0
     
     def _handle_error(self, context: str, error: Exception) -> None:
         """Handle errors based on silent mode."""

@@ -2,6 +2,7 @@
 Tests for LiteSOC Python SDK
 """
 
+import json
 import unittest
 from unittest.mock import patch
 
@@ -229,26 +230,26 @@ class TestLiteSOCBatching(unittest.TestCase):
 
     @responses.activate
     def test_flush_sends_multiple_events_individually(self):
-        """Test flush sends multiple events one at a time (API doesn't support batch)"""
+        """Test flush sends multiple events in a single batched request (v2.5.0+)"""
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
-            json={"status": "queued"},
+            json={"status": "queued", "queued": 2},
             status=202,
         )
-        responses.add(
-            responses.POST,
-            "https://api.litesoc.io/collect",
-            json={"status": "queued"},
-            status=202,
-        )
-        
+
         self.sdk.track("auth.login_success", actor_id="user_1")
         self.sdk.track("auth.login_success", actor_id="user_2")
         self.sdk.flush()
-        
-        # Should have made 2 separate requests (one per event)
-        self.assertEqual(len(responses.calls), 2)
+
+        # Should have made 1 batched request containing 2 events
+        self.assertEqual(len(responses.calls), 1)
+        raw_body = responses.calls[0].request.body or b"{}"
+        if isinstance(raw_body, bytes):
+            raw_body = raw_body.decode()
+        payload = json.loads(raw_body)
+        self.assertIn("events", payload)
+        self.assertEqual(len(payload["events"]), 2)
         self.assertEqual(self.sdk.get_queue_size(), 0)
 
     @patch.object(LiteSOC, "_send_events")
@@ -374,7 +375,7 @@ class TestLiteSOCSendEvents(unittest.TestCase):
 
     @responses.activate
     def test_send_events_success(self):
-        """Test successful event sending"""
+        """Test successful event sending for single and batched payloads"""
         responses.add(
             responses.POST,
             "https://api.litesoc.io/collect",
@@ -382,11 +383,38 @@ class TestLiteSOCSendEvents(unittest.TestCase):
             status=202,
         )
         
-        sdk = LiteSOC(api_key="test-key", batching=True, debug=True)
+        # Single event: flat payload
+        sdk = LiteSOC(api_key="test-key", batching=False, debug=True)
         sdk.track("auth.login_success", actor_id="user_123")
         sdk.flush()
-        
         self.assertEqual(len(responses.calls), 1)
+        raw_single = responses.calls[0].request.body or b"{}"
+        if isinstance(raw_single, bytes):
+            raw_single = raw_single.decode()
+        payload_single = json.loads(raw_single)
+        self.assertIn("event", payload_single)
+        self.assertNotIn("events", payload_single)
+        sdk.shutdown()
+
+        # Batched events: { "events": [...] }
+        responses.reset()
+        responses.add(
+            responses.POST,
+            "https://api.litesoc.io/collect",
+            json={"status": "queued", "queued": 2},
+            status=202,
+        )
+        sdk = LiteSOC(api_key="test-key", batching=True, batch_size=10, debug=True)
+        sdk.track("auth.login_success", actor_id="user_1")
+        sdk.track("auth.login_success", actor_id="user_2")
+        sdk.flush()
+        self.assertEqual(len(responses.calls), 1)
+        raw_batch = responses.calls[0].request.body or b"{}"
+        if isinstance(raw_batch, bytes):
+            raw_batch = raw_batch.decode()
+        payload_batch = json.loads(raw_batch)
+        self.assertIn("events", payload_batch)
+        self.assertEqual(len(payload_batch["events"]), 2)
         sdk.shutdown()
 
     @responses.activate
@@ -427,6 +455,93 @@ class TestLiteSOCSendEvents(unittest.TestCase):
         self.assertFalse(result)
         
         sdk.clear_queue()
+        sdk.shutdown()
+
+
+class TestTrackBatch(unittest.TestCase):
+    """Tests for the track_batch helper."""
+
+    def test_track_batch_requires_at_least_one_event(self):
+        sdk = LiteSOC(api_key="test-key")
+        with self.assertRaises(ValueError):
+            sdk.track_batch([])
+        sdk.shutdown()
+
+    def test_track_batch_max_100_events(self):
+        sdk = LiteSOC(api_key="test-key")
+        events = [{"event_name": "auth.login_success"} for _ in range(101)]
+        with self.assertRaises(ValueError):
+            sdk.track_batch(events)
+        sdk.shutdown()
+
+    @patch.object(LiteSOC, "_send_events")
+    def test_track_batch_success_returns_count(self, mock_send):
+        sdk = LiteSOC(api_key="test-key", silent=False)
+        mock_send.return_value = None
+
+        events = [
+            {"event_name": "auth.login_success", "actor_id": "user_1", "actor_email": "u1@example.com"},
+            {
+                "event_name": "auth.login_success",
+                "actor": {"id": "user_2", "email": "u2@example.com"},
+                "user_ip": "203.0.113.50",
+                "metadata": {"foo": "bar"},
+            },
+        ]
+
+        result = sdk.track_batch(events)
+
+        self.assertEqual(result, 2)
+        mock_send.assert_called_once()
+        # _send_events should receive a list of two queued events
+        queued_events = mock_send.call_args[0][0]
+        self.assertEqual(len(queued_events), 2)
+
+        sdk.shutdown()
+
+    @patch.object(LiteSOC, "_send_events")
+    def test_track_batch_handles_error_and_returns_zero(self, mock_send):
+        sdk = LiteSOC(api_key="test-key", silent=True)
+        mock_send.side_effect = Exception("boom")
+
+        result = sdk.track_batch([{"event_name": "auth.login_failed", "actor_id": "user_1"}])
+
+        self.assertEqual(result, 0)
+        mock_send.assert_called_once()
+        sdk.shutdown()
+
+    @patch.object(LiteSOC, "_send_events")
+    def test_track_batch_actor_variants(self, mock_send):
+        """Ensure all actor normalization branches in track_batch are exercised."""
+        sdk = LiteSOC(api_key="test-key", silent=False)
+        mock_send.return_value = None
+
+        events = [
+            # actor is an Actor instance -> actor_raw is Actor
+            {"event_name": "auth.login_success", "actor": Actor(id="user_actor", email="actor@example.com")},
+            # actor is a string with separate actor_email
+            {"event_name": "auth.login_success", "actor": "user_string", "actor_email": "string@example.com"},
+            # only actor_email provided
+            {"event_name": "auth.login_success", "actor_email": "email_only@example.com"},
+        ]
+
+        result = sdk.track_batch(events)
+
+        self.assertEqual(result, 3)
+        mock_send.assert_called_once()
+        queued_events = mock_send.call_args[0][0]
+        self.assertEqual(len(queued_events), 3)
+
+        # Actor instance
+        self.assertEqual(queued_events[0].actor, {"id": "user_actor", "email": "actor@example.com"})
+        # String actor + actor_email
+        self.assertEqual(queued_events[1].actor, {"id": "user_string", "email": "string@example.com"})
+        # actor_email only branch
+        self.assertEqual(
+            queued_events[2].actor,
+            {"id": "email_only@example.com", "email": "email_only@example.com"},
+        )
+
         sdk.shutdown()
 
 
@@ -756,7 +871,7 @@ class TestLiteSOCUserAgent(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key")
         user_agent = sdk._session.headers.get("User-Agent")
         self.assertTrue(user_agent.startswith("litesoc-python-sdk/"))
-        self.assertIn("2.4.0", user_agent)
+        self.assertIn("2.5.0", user_agent)
         sdk.shutdown()
 
     def test_api_key_header(self):
