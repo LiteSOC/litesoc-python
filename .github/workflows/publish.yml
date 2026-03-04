@@ -3,8 +3,11 @@
 name: Publish to PyPI
 
 on:
+  # Auto-publish when a GitHub Release is published
   release:
     types: [published]
+  # Allow manual runs from the Actions tab (e.g. for an existing tag like v2.5.0)
+  workflow_dispatch:
 
 jobs:
   publish:

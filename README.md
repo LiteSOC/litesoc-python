@@ -679,7 +679,16 @@ pip install -e .
    - Choose a tag (e.g. `v2.5.0`) or create one.  
    - Publish the release. The **Publish to PyPI** workflow will build and upload the package.
 
-**Option B – Publish manually**
+**Option B – Trigger the workflow from the command line** (if "Run workflow" doesn’t show in the UI)
+
+```bash
+# From any machine with GitHub CLI installed and logged in (gh auth login)
+cd /path/to/litesoc-python
+gh workflow run publish.yml --ref main
+# Then check: https://github.com/LiteSOC/litesoc-python/actions
+```
+
+**Option C – Publish from your machine with Twine**
 
 ```bash
 # From repo root, in a venv with build + twine installed
