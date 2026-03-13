@@ -47,11 +47,12 @@ class SecurityEvents(str, Enum):
     AUTHZ_PERMISSION_REVOKED = "authz.permission_revoked"
     AUTHZ_ACCESS_DENIED = "authz.access_denied"
     
-    # Admin events (7 events)
+    # Admin events (8 events)
     ADMIN_USER_CREATED = "admin.user_created"
     ADMIN_USER_DELETED = "admin.user_deleted"
     ADMIN_USER_SUSPENDED = "admin.user_suspended"
     ADMIN_PRIVILEGE_ESCALATION = "admin.privilege_escalation"
+    ADMIN_USER_IMPERSONATION = "admin.user_impersonation"
     ADMIN_SETTINGS_CHANGED = "admin.settings_changed"
     ADMIN_API_KEY_CREATED = "admin.api_key_created"
     ADMIN_API_KEY_REVOKED = "admin.api_key_revoked"
@@ -225,6 +226,7 @@ AdminEvent = Literal[
     "admin.user_deleted",
     "admin.user_suspended",
     "admin.privilege_escalation",
+    "admin.user_impersonation",
     "admin.settings_changed",
     "admin.api_key_created",
     "admin.api_key_revoked",
@@ -286,7 +288,6 @@ LegacyAuthzEvent = Literal[
 
 # Extended admin events
 LegacyAdminEvent = Literal[
-    "admin.user_impersonation",
     "admin.invite_sent",
     "admin.invite_accepted",
     "admin.member_removed",
