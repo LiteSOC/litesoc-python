@@ -19,14 +19,14 @@ from typing import Any, Literal, Optional, Union
 class SecurityEvents(str, Enum):
     """
     26 Standard Security Events optimized for Security Intelligence.
-    
+
     These events are automatically enriched with GeoIP, VPN/Tor/Proxy
     detection, and threat scoring when user_ip is provided.
-    
+
     Example:
         ```python
         from litesoc import LiteSOC, SecurityEvents
-        
+
         litesoc = LiteSOC(api_key="your-api-key")
         litesoc.track(SecurityEvents.AUTH_LOGIN_FAILED, actor_id="user_123")
         ```
@@ -40,7 +40,7 @@ class SecurityEvents(str, Enum):
     AUTH_MFA_DISABLED = "auth.mfa_disabled"
     AUTH_SESSION_EXPIRED = "auth.session_expired"
     AUTH_TOKEN_REFRESHED = "auth.token_refreshed"
-    
+
     # Authorization events (4 events)
     AUTHZ_ROLE_CHANGED = "authz.role_changed"
     AUTHZ_PERMISSION_GRANTED = "authz.permission_granted"
@@ -49,13 +49,12 @@ class SecurityEvents(str, Enum):
     
     # Admin events (7 events)
     ADMIN_USER_CREATED = "admin.user_created"
+    ADMIN_USER_DELETED = "admin.user_deleted"
+    ADMIN_USER_SUSPENDED = "admin.user_suspended"
     ADMIN_PRIVILEGE_ESCALATION = "admin.privilege_escalation"
-    ADMIN_USER_IMPERSONATION = "admin.user_impersonation"
     ADMIN_SETTINGS_CHANGED = "admin.settings_changed"
     ADMIN_API_KEY_CREATED = "admin.api_key_created"
     ADMIN_API_KEY_REVOKED = "admin.api_key_revoked"
-    ADMIN_USER_SUSPENDED = "admin.user_suspended"
-    ADMIN_USER_DELETED = "admin.user_deleted"
     
     # Data events (3 events)
     DATA_BULK_DELETE = "data.bulk_delete"
@@ -223,13 +222,12 @@ AuthzEvent = Literal[
 # Admin events (7 events)
 AdminEvent = Literal[
     "admin.user_created",
+    "admin.user_deleted",
+    "admin.user_suspended",
     "admin.privilege_escalation",
-    "admin.user_impersonation",
     "admin.settings_changed",
     "admin.api_key_created",
     "admin.api_key_revoked",
-    "admin.user_suspended",
-    "admin.user_deleted",
 ]
 
 # Data events (3 events)
@@ -288,6 +286,7 @@ LegacyAuthzEvent = Literal[
 
 # Extended admin events
 LegacyAdminEvent = Literal[
+    "admin.user_impersonation",
     "admin.invite_sent",
     "admin.invite_accepted",
     "admin.member_removed",
