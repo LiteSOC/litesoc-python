@@ -5,6 +5,15 @@ All notable changes to the LiteSOC Python SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.6.0] - 2026-08-08
+
+### Fixed
+- **API error classification** - `_handle_api_error()` now parses both flat (`{ "error": "<msg>", "code", "link", "upgrade_link"? }`) and nested (`{ "error": { "message", "code", "upgrade_url"? } }`) error bodies, and classifies errors by HTTP status (e.g. Free-tier `/alerts` `403` → `PlanRestrictedError`). The resulting exception `message` is always a string, never a dict.
+
+### Added
+- **`get_health()`** - New `GET /health` credential probe returning the API status object (surfaces `authenticated`/`organization` when called with a valid key).
+- **Quota response headers** - `ResponseMetadata` now exposes `quota_limit`, `quota_remaining`, and `quota_used` parsed from the `X-LiteSOC-Quota-*` headers. `POST /collect` now captures response metadata.
+
 ## [2.5.0] - 2026-03-03
 
 ### Added

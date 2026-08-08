@@ -871,7 +871,7 @@ class TestLiteSOCUserAgent(unittest.TestCase):
         sdk = LiteSOC(api_key="test-key")
         user_agent = sdk._session.headers.get("User-Agent")
         self.assertTrue(user_agent.startswith("litesoc-python-sdk/"))
-        self.assertIn("2.5.0", user_agent)
+        self.assertIn("2.6.0", user_agent)
         sdk.shutdown()
 
     def test_api_key_header(self):

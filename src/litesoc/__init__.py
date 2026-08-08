@@ -54,7 +54,7 @@ from litesoc.types import (
     ValidationError,
 )
 
-__version__ = "2.2.0"
+__version__ = "2.6.0"
 __all__ = [
     # Core client
     "LiteSOC",

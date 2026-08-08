@@ -25,7 +25,7 @@ from litesoc.types import (
     ValidationError,
 )
 
-__version__ = "2.5.0"
+__version__ = "2.6.0"
 
 # Default base URL for the API
 DEFAULT_BASE_URL = "https://api.litesoc.io"
@@ -943,7 +943,13 @@ class LiteSOC:
                 raw_message = error_field if error_field is not None else data.get("message")
                 error_code = data.get("code")
                 required_plan = data.get("required_plan")
-                upgrade_url = data.get("upgrade_url")
+                # FLAT bodies standardize on ``upgrade_link``/``link``; fall
+                # back through them so the plan upgrade hint is still surfaced.
+                upgrade_url = (
+                    data.get("upgrade_url")
+                    or data.get("upgrade_link")
+                    or data.get("link")
+                )
                 retry_after_body = data.get("retry_after")
 
         # The final message must ALWAYS be a string (never a dict).
