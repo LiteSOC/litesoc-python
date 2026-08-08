@@ -1128,18 +1128,76 @@ class TestManagementAPIErrors(unittest.TestCase):
 
     @responses.activate
     def test_403_forbidden(self):
-        """Test 403 forbidden error"""
+        """Test 403 forbidden error (classified by status as plan-restricted)"""
         responses.add(
             responses.GET,
             "https://api.litesoc.io/alerts",
             json={"error": "Access denied"},
             status=403,
         )
-        
-        with self.assertRaises(LiteSOCAuthError) as ctx:
+
+        with self.assertRaises(PlanRestrictedError) as ctx:
             self.sdk.get_alerts()
-        
+
         self.assertEqual(ctx.exception.status_code, 403)
+        # Flat message string is preserved (never a dict) and hint appended.
+        self.assertIsInstance(ctx.exception.message, str)
+        self.assertIn("Access denied", ctx.exception.message)
+
+    @responses.activate
+    def test_403_plan_restricted_nested_body(self):
+        """403 with NESTED error body maps to PlanRestrictedError with a string message"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/alerts",
+            json={
+                "success": False,
+                "error": {
+                    "code": "PLAN_RESTRICTED",
+                    "message": "Upgrade required",
+                    "upgrade_url": "https://www.litesoc.io/pricing",
+                },
+            },
+            status=403,
+        )
+
+        with self.assertRaises(PlanRestrictedError) as ctx:
+            self.sdk.get_alerts()
+
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertEqual(ctx.exception.error_code, "PLAN_RESTRICTED")
+        # Message must be the nested string, NOT the error dict.
+        self.assertIsInstance(ctx.exception.message, str)
+        self.assertIn("Upgrade required", ctx.exception.message)
+        self.assertIn("Upgrade required", str(ctx.exception))
+        self.assertNotIn("{", str(ctx.exception))
+
+    @responses.activate
+    def test_429_rate_limit_nested_body(self):
+        """429 with NESTED error body maps to RateLimitError with a string message"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/events",
+            json={
+                "success": False,
+                "error": {
+                    "code": "RATE_LIMITED",
+                    "message": "Too many requests",
+                    "retry_after": 30,
+                },
+            },
+            status=429,
+        )
+
+        with self.assertRaises(RateLimitError) as ctx:
+            self.sdk.get_events()
+
+        self.assertEqual(ctx.exception.status_code, 429)
+        self.assertEqual(ctx.exception.error_code, "RATE_LIMITED")
+        self.assertIsInstance(ctx.exception.message, str)
+        self.assertEqual(ctx.exception.message, "Too many requests")
+        # Falls back to the body's retry_after when no header is present.
+        self.assertEqual(ctx.exception.retry_after, 30)
 
     @responses.activate
     def test_403_plan_restricted(self):
@@ -1191,6 +1249,23 @@ class TestManagementAPIErrors(unittest.TestCase):
             self.sdk.get_alerts()
         
         self.assertIsNone(ctx.exception.retry_after)
+
+    @responses.activate
+    def test_error_dict_body_without_message(self):
+        """Dict body missing any message string falls back to an HTTP status string"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/alerts",
+            json={"code": "SERVER_ERROR"},
+            status=500,
+        )
+
+        with self.assertRaises(LiteSOCError) as ctx:
+            self.sdk.get_alerts()
+
+        self.assertEqual(ctx.exception.status_code, 500)
+        self.assertEqual(ctx.exception.message, "HTTP 500")
+        self.assertEqual(ctx.exception.error_code, "SERVER_ERROR")
 
     @responses.activate
     def test_500_server_error(self):

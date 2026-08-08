@@ -871,70 +871,101 @@ class LiteSOC:
             raise LiteSOCError(f"Request failed: {e}") from e
     
     def _handle_api_error(self, response: requests.Response) -> None:
-        """Handle API error responses."""
+        """Handle API error responses.
+
+        The backend returns two error body shapes:
+
+        * FLAT (``lib/errors.ts``): ``{"error": "msg", "code": "CODE", ...}``
+        * NESTED (inline plan/rate-limit gates): ``{"success": false,
+          "error": {"code": "CODE", "message": "msg", "upgrade_url"?: ...}}``
+
+        Both are parsed defensively; classification is driven primarily by
+        the HTTP status so the plan gate stays reliable regardless of shape.
+        """
+        status_code = response.status_code
+
+        raw_message: Any = None
+        error_code: Optional[str] = None
+        required_plan: Optional[str] = None
+        upgrade_url: Optional[str] = None
+        retry_after_body: Any = None
+
         try:
             data = response.json()
-            message = data.get("error", data.get("message", "Unknown error"))
-            error_code = data.get("code")
         except Exception:
-            message = response.text or f"HTTP {response.status_code}"
-            error_code = None
-        
-        status_code = response.status_code
-        
+            data = None
+
+        if isinstance(data, dict):
+            error_field = data.get("error")
+            if isinstance(error_field, dict):
+                # NESTED shape: details live inside the ``error`` object.
+                raw_message = error_field.get("message")
+                error_code = error_field.get("code")
+                required_plan = error_field.get("required_plan")
+                upgrade_url = error_field.get("upgrade_url")
+                retry_after_body = error_field.get("retry_after")
+            else:
+                # FLAT shape: ``error`` is a string (or absent).
+                raw_message = error_field if error_field is not None else data.get("message")
+                error_code = data.get("code")
+                required_plan = data.get("required_plan")
+                upgrade_url = data.get("upgrade_url")
+                retry_after_body = data.get("retry_after")
+
+        # The final message must ALWAYS be a string (never a dict).
+        if isinstance(raw_message, str) and raw_message:
+            message = raw_message
+        elif isinstance(data, dict):
+            message = f"HTTP {status_code}"
+        else:
+            message = response.text or f"HTTP {status_code}"
+
         if status_code == 401:
             raise LiteSOCAuthError(
                 message,
                 status_code=status_code,
                 error_code=error_code,
             )
-        
+
         if status_code == 403:
-            # Check if it's a plan restriction
-            try:
-                data = response.json()
-                if data.get("code") == "PLAN_RESTRICTED":
-                    required_plan = data.get("required_plan", "Pro or Enterprise")
-                    hint = f" Upgrade to {required_plan} at {PlanRestrictedError.UPGRADE_URL}"
-                    raise PlanRestrictedError(
-                        message + hint,
-                        status_code=status_code,
-                        error_code=error_code,
-                        required_plan=required_plan,
-                    )
-            except PlanRestrictedError:
-                raise
-            except (ValueError, KeyError):  # pragma: no cover
-                pass  # pragma: no cover
-            raise LiteSOCAuthError(
-                message,
+            plan = required_plan or "Pro or Enterprise"
+            hint = f" Upgrade to {plan} at {upgrade_url or PlanRestrictedError.UPGRADE_URL}"
+            raise PlanRestrictedError(
+                message + hint,
                 status_code=status_code,
                 error_code=error_code,
+                required_plan=plan,
             )
-        
+
         if status_code == 429:
-            retry_after = response.headers.get("Retry-After")
+            header_retry_after = response.headers.get("Retry-After")
+            if header_retry_after:
+                retry_after: Optional[int] = int(header_retry_after)
+            elif retry_after_body is not None:
+                retry_after = int(retry_after_body)
+            else:
+                retry_after = None
             raise RateLimitError(
                 message,
                 status_code=status_code,
                 error_code=error_code,
-                retry_after=int(retry_after) if retry_after else None,
+                retry_after=retry_after,
             )
-        
+
         if status_code == 404:
             raise NotFoundError(
                 message,
                 status_code=status_code,
                 error_code=error_code,
             )
-        
+
         if status_code == 400:
             raise ValidationError(
                 message,
                 status_code=status_code,
                 error_code=error_code,
             )
-        
+
         raise LiteSOCError(
             message,
             status_code=status_code,
