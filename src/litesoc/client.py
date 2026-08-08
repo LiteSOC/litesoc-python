@@ -763,9 +763,43 @@ class LiteSOC:
         return self._api_request("GET", f"/events/{event_id}", timeout=timeout)
     
     # ============================================
+    # HEALTH / STATUS METHODS
+    # ============================================
+
+    def get_health(self, *, timeout: Optional[float] = None) -> dict[str, Any]:
+        """
+        Check API health and verify credentials.
+
+        Performs a side-effect-free ``GET /health`` request. When called with a
+        valid API key the response includes ``organization`` and
+        ``authenticated: true``; without a key it returns a basic status object.
+
+        Args:
+            timeout: Request timeout in seconds (overrides class default)
+
+        Returns:
+            Dictionary containing the health status. Shape depends on auth:
+            - Unauthenticated: ``{status, service, version, timestamp}``
+            - Authenticated: adds ``organization: {id, name}`` and
+              ``authenticated: true``
+
+        Raises:
+            LiteSOCAuthError: If the API key is invalid (401)
+            LiteSOCError: For other API errors
+
+        Example:
+            ```python
+            health = litesoc.get_health()
+            if health.get("authenticated"):
+                print(f"Connected as {health['organization']['name']}")
+            ```
+        """
+        return self._api_request("GET", "/health", timeout=timeout)
+
+    # ============================================
     # PLAN INFO METHODS
     # ============================================
-    
+
     def get_plan_info(self) -> Optional[ResponseMetadata]:
         """
         Get plan information from the last API response.
@@ -1016,7 +1050,13 @@ class LiteSOC:
                 json=payload,
                 timeout=request_timeout,
             )
-            
+
+            # Capture plan/quota headers returned by POST /collect so callers can
+            # inspect them via get_plan_info() after ingestion.
+            self._last_response_metadata = ResponseMetadata.from_headers(
+                dict(response.headers)
+            )
+
             response.raise_for_status()
             result = response.json()
             

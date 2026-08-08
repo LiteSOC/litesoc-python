@@ -424,7 +424,10 @@ class ResponseMetadata:
     - X-LiteSOC-Plan: Current plan name (e.g., "free", "pro", "enterprise")
     - X-LiteSOC-Retention: Data retention period in days
     - X-LiteSOC-Cutoff: Earliest accessible data timestamp (ISO 8601)
-    
+    - X-LiteSOC-Quota-Limit: Total ingestion quota for the current period
+    - X-LiteSOC-Quota-Remaining: Remaining ingestion quota for the period
+    - X-LiteSOC-Quota-Used: Ingestion quota already consumed this period
+
     Example:
         ```python
         events = litesoc.get_events()
@@ -432,31 +435,35 @@ class ResponseMetadata:
         if plan_info:
             print(f"Plan: {plan_info.plan}")
             print(f"Retention: {plan_info.retention_days} days")
+            print(f"Quota remaining: {plan_info.quota_remaining}")
         ```
     """
-    
+
     plan: Optional[str] = None
     retention_days: Optional[int] = None
     cutoff_date: Optional[str] = None
-    
+    quota_limit: Optional[int] = None
+    quota_remaining: Optional[int] = None
+    quota_used: Optional[int] = None
+
     @classmethod
     def from_headers(cls, headers: dict[str, str]) -> "ResponseMetadata":
         """
         Create ResponseMetadata from HTTP response headers.
-        
+
         Args:
             headers: Response headers dictionary
-        
+
         Returns:
             ResponseMetadata instance with parsed values
         """
         # Normalize header names to lowercase for case-insensitive access
         normalized = {k.lower(): v for k, v in headers.items()}
-        
+
         plan = normalized.get("x-litesoc-plan")
         retention_str = normalized.get("x-litesoc-retention")
         cutoff = normalized.get("x-litesoc-cutoff")
-        
+
         # Parse retention days - API returns "30 days" format, extract the number
         retention_days: Optional[int] = None
         if retention_str:
@@ -468,12 +475,25 @@ class ResponseMetadata:
                 retention_days = int(retention_str)
             except ValueError:
                 retention_days = None
-        
+
         return cls(
             plan=plan,
             retention_days=retention_days,
             cutoff_date=cutoff,
+            quota_limit=cls._parse_int(normalized.get("x-litesoc-quota-limit")),
+            quota_remaining=cls._parse_int(normalized.get("x-litesoc-quota-remaining")),
+            quota_used=cls._parse_int(normalized.get("x-litesoc-quota-used")),
         )
+
+    @staticmethod
+    def _parse_int(value: Optional[str]) -> Optional[int]:
+        """Parse an integer header value, returning None when absent or invalid."""
+        if value is None:
+            return None
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
     
     def has_plan_info(self) -> bool:
         """Check if plan information is available."""

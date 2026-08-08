@@ -1998,5 +1998,142 @@ class TestManagementAPINotFoundValidation(unittest.TestCase):
         sdk.shutdown()
 
 
+class TestGetHealth(unittest.TestCase):
+    """Test get_health credential probe"""
+
+    def setUp(self):
+        self.sdk = LiteSOC(api_key="lsoc_live_mockkey", base_url="https://api.litesoc.io")
+
+    def tearDown(self):
+        self.sdk.shutdown()
+
+    @responses.activate
+    def test_get_health_unauthenticated_shape(self):
+        """Test get_health returns the basic status object"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/health",
+            json={
+                "status": "ok",
+                "service": "litesoc-api",
+                "version": "2.5.0",
+                "timestamp": "2026-08-08T00:00:00Z",
+            },
+            status=200,
+        )
+
+        result = self.sdk.get_health()
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["service"], "litesoc-api")
+        self.assertEqual(result["version"], "2.5.0")
+        self.assertIn("timestamp", result)
+
+    @responses.activate
+    def test_get_health_authenticated_shape(self):
+        """Test get_health surfaces organization/authenticated with a valid key"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/health",
+            json={
+                "status": "ok",
+                "service": "litesoc-api",
+                "version": "2.5.0",
+                "timestamp": "2026-08-08T00:00:00Z",
+                "organization": {"id": "org_123", "name": "Acme Corp"},
+                "authenticated": True,
+            },
+            status=200,
+        )
+
+        result = self.sdk.get_health()
+
+        self.assertTrue(result["authenticated"])
+        self.assertEqual(result["organization"]["id"], "org_123")
+        self.assertEqual(result["organization"]["name"], "Acme Corp")
+
+    @responses.activate
+    def test_get_health_invalid_key_raises_auth_error(self):
+        """Test get_health raises LiteSOCAuthError on 401"""
+        responses.add(
+            responses.GET,
+            "https://api.litesoc.io/health",
+            json={"status": "error", "error": "Invalid API key"},
+            status=401,
+        )
+
+        with self.assertRaises(LiteSOCAuthError) as ctx:
+            self.sdk.get_health()
+
+        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertIn("Invalid API key", ctx.exception.message)
+
+
+class TestResponseMetadataQuota(unittest.TestCase):
+    """Test quota header parsing in ResponseMetadata"""
+
+    def test_from_headers_parses_quota(self):
+        """Test parsing of the three X-LiteSOC-Quota-* headers"""
+        headers = {
+            "X-LiteSOC-Plan": "pro",
+            "X-LiteSOC-Quota-Limit": "10000",
+            "X-LiteSOC-Quota-Remaining": "9998",
+            "X-LiteSOC-Quota-Used": "2",
+        }
+
+        metadata = ResponseMetadata.from_headers(headers)
+
+        self.assertEqual(metadata.quota_limit, 10000)
+        self.assertEqual(metadata.quota_remaining, 9998)
+        self.assertEqual(metadata.quota_used, 2)
+
+    def test_from_headers_quota_absent_is_none(self):
+        """Test quota fields default to None when headers are absent"""
+        metadata = ResponseMetadata.from_headers({"X-LiteSOC-Plan": "free"})
+
+        self.assertIsNone(metadata.quota_limit)
+        self.assertIsNone(metadata.quota_remaining)
+        self.assertIsNone(metadata.quota_used)
+
+    def test_from_headers_quota_invalid_is_none(self):
+        """Test invalid quota header value parses to None"""
+        headers = {"X-LiteSOC-Quota-Limit": "not-a-number"}
+
+        metadata = ResponseMetadata.from_headers(headers)
+
+        self.assertIsNone(metadata.quota_limit)
+
+
+class TestCollectCapturesMetadata(unittest.TestCase):
+    """Test that POST /collect populates response metadata"""
+
+    @responses.activate
+    def test_collect_captures_response_metadata(self):
+        """Test _send_events records plan/quota headers from /collect"""
+        responses.add(
+            responses.POST,
+            "https://api.litesoc.io/collect",
+            json={"status": "queued"},
+            status=202,
+            headers={
+                "X-LiteSOC-Plan": "pro",
+                "X-LiteSOC-Quota-Limit": "10000",
+                "X-LiteSOC-Quota-Remaining": "9999",
+                "X-LiteSOC-Quota-Used": "1",
+            },
+        )
+
+        sdk = LiteSOC(api_key="lsoc_live_mockkey", batching=False)
+        sdk.track("auth.login_success", actor_id="user_123")
+
+        plan_info = sdk.get_plan_info()
+        self.assertIsNotNone(plan_info)
+        self.assertEqual(plan_info.plan, "pro")
+        self.assertEqual(plan_info.quota_limit, 10000)
+        self.assertEqual(plan_info.quota_remaining, 9999)
+        self.assertEqual(plan_info.quota_used, 1)
+        sdk.shutdown()
+
+
 if __name__ == "__main__":
     unittest.main()
